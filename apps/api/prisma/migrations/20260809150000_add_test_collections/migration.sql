@@ -1,0 +1,13 @@
+CREATE TYPE "HttpMethod" AS ENUM ('GET', 'POST', 'PUT', 'PATCH', 'DELETE');
+CREATE TYPE "RunStatus" AS ENUM ('PASSED', 'FAILED');
+CREATE TABLE "Collection" ("id" TEXT NOT NULL, "projectId" TEXT NOT NULL, "name" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "Collection_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "TestRequest" ("id" TEXT NOT NULL, "collectionId" TEXT NOT NULL, "name" TEXT NOT NULL, "method" "HttpMethod" NOT NULL, "url" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "TestRequest_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "StatusAssertion" ("id" TEXT NOT NULL, "testRequestId" TEXT NOT NULL, "expectedStatus" INTEGER NOT NULL, CONSTRAINT "StatusAssertion_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "ExecutionRun" ("id" TEXT NOT NULL, "collectionId" TEXT NOT NULL, "status" "RunStatus" NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "ExecutionRun_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "RequestResult" ("id" TEXT NOT NULL, "executionRunId" TEXT NOT NULL, "testRequestId" TEXT NOT NULL, "statusCode" INTEGER, "durationMs" INTEGER NOT NULL, "error" TEXT, "passed" BOOLEAN NOT NULL, CONSTRAINT "RequestResult_pkey" PRIMARY KEY ("id"));
+ALTER TABLE "Collection" ADD CONSTRAINT "Collection_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "TestRequest" ADD CONSTRAINT "TestRequest_collectionId_fkey" FOREIGN KEY ("collectionId") REFERENCES "Collection"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "StatusAssertion" ADD CONSTRAINT "StatusAssertion_testRequestId_fkey" FOREIGN KEY ("testRequestId") REFERENCES "TestRequest"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "ExecutionRun" ADD CONSTRAINT "ExecutionRun_collectionId_fkey" FOREIGN KEY ("collectionId") REFERENCES "Collection"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "RequestResult" ADD CONSTRAINT "RequestResult_executionRunId_fkey" FOREIGN KEY ("executionRunId") REFERENCES "ExecutionRun"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "RequestResult" ADD CONSTRAINT "RequestResult_testRequestId_fkey" FOREIGN KEY ("testRequestId") REFERENCES "TestRequest"("id") ON DELETE CASCADE ON UPDATE CASCADE;

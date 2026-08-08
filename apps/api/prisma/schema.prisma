@@ -25,6 +25,19 @@ enum DiffSeverity {
   NON_BREAKING
 }
 
+enum HttpMethod {
+  GET
+  POST
+  PUT
+  PATCH
+  DELETE
+}
+
+enum RunStatus {
+  PASSED
+  FAILED
+}
+
 model Organization {
   id        String       @id @default(cuid())
   name      String
@@ -92,7 +105,58 @@ model Project {
   createdAt      DateTime        @default(now())
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   specifications Specification[]
+  collections    Collection[]
   @@unique([organizationId, slug])
+}
+
+model Collection {
+  id        String         @id @default(cuid())
+  projectId String
+  name      String
+  createdAt DateTime       @default(now())
+  project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requests  TestRequest[]
+  runs      ExecutionRun[]
+}
+
+model TestRequest {
+  id           String            @id @default(cuid())
+  collectionId String
+  name         String
+  method       HttpMethod
+  url          String
+  createdAt    DateTime          @default(now())
+  collection   Collection        @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  assertions   StatusAssertion[]
+  results      RequestResult[]
+}
+
+model StatusAssertion {
+  id             String      @id @default(cuid())
+  testRequestId  String
+  expectedStatus Int
+  testRequest    TestRequest @relation(fields: [testRequestId], references: [id], onDelete: Cascade)
+}
+
+model ExecutionRun {
+  id           String          @id @default(cuid())
+  collectionId String
+  status       RunStatus
+  createdAt    DateTime        @default(now())
+  collection   Collection      @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  results      RequestResult[]
+}
+
+model RequestResult {
+  id             String       @id @default(cuid())
+  executionRunId String
+  testRequestId  String
+  statusCode     Int?
+  durationMs     Int
+  error          String?
+  passed         Boolean
+  executionRun   ExecutionRun @relation(fields: [executionRunId], references: [id], onDelete: Cascade)
+  testRequest    TestRequest  @relation(fields: [testRequestId], references: [id], onDelete: Cascade)
 }
 
 model Specification {

@@ -9,6 +9,7 @@ import prismaPlugin from './plugins/prisma.js';
 import authPlugin from './plugins/auth.js';
 import { authRoutes } from './routes/auth.js';
 import { memberRoutes } from './routes/members.js';
+import { collectionRoutes } from './routes/collections.js';
 import { healthRoutes } from './routes/health.js';
 import { projectRoutes } from './routes/projects.js';
 import { specificationRoutes } from './routes/specifications.js';
@@ -23,6 +24,7 @@ export async function buildApp() {
   await app.register(healthRoutes, { prefix: '/v1' });
   await app.register(authRoutes, { prefix: '/v1' });
   await app.register(memberRoutes, { prefix: '/v1' });
+  await app.register(collectionRoutes, { prefix: '/v1' });
   await app.register(projectRoutes, { prefix: '/v1' });
   await app.register(specificationRoutes, { prefix: '/v1' });
   app.setErrorHandler((error, request, reply) => {
