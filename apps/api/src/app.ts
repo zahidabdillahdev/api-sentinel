@@ -6,6 +6,8 @@ import { ZodError } from 'zod';
 import { config } from './config.js';
 import { AppError } from './lib/errors.js';
 import prismaPlugin from './plugins/prisma.js';
+import authPlugin from './plugins/auth.js';
+import { authRoutes } from './routes/auth.js';
 import { healthRoutes } from './routes/health.js';
 import { projectRoutes } from './routes/projects.js';
 import { specificationRoutes } from './routes/specifications.js';
@@ -16,7 +18,9 @@ export async function buildApp() {
   await app.register(swagger, { openapi: { info: { title: 'API Sentinel API', version: '0.1.0' } } });
   await app.register(swaggerUi, { routePrefix: '/documentation' });
   await app.register(prismaPlugin);
+  await app.register(authPlugin);
   await app.register(healthRoutes, { prefix: '/v1' });
+  await app.register(authRoutes, { prefix: '/v1' });
   await app.register(projectRoutes, { prefix: '/v1' });
   await app.register(specificationRoutes, { prefix: '/v1' });
   app.setErrorHandler((error, request, reply) => {

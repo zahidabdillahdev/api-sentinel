@@ -13,6 +13,37 @@ npm run db:migrate -w @api-sentinel/api
 npm run dev
 ```
 
+## Authentication
+
+Create an account and keep the returned bearer token private:
+
+```bash
+curl -X POST http://localhost:3001/v1/auth/register \
+  -H 'content-type: application/json' \
+  -d '{"name":"API Owner","email":"owner@example.com","password":"replace-with-a-strong-password"}'
+```
+
+Pass the token to protected endpoints:
+
+```bash
+curl http://localhost:3001/v1/organizations \
+  -H 'authorization: Bearer YOUR_TOKEN'
+```
+
+Sessions expire after seven days. The database stores only a SHA-256 digest of each session token; passwords are salted and hashed with scrypt. All organization, project, and specification routes enforce membership roles on the server.
+
+## Production containers
+
+```bash
+docker compose build api
+docker compose up -d postgres redis
+docker compose run --rm api npx prisma migrate deploy
+docker compose up -d api
+curl http://localhost:3001/v1/health
+```
+
+PostgreSQL and Redis are available only inside the Compose network. Put a TLS reverse proxy in front of port `3001` before using production credentials over a public network.
+
 The API starts at `http://localhost:3001`. Its interactive API documentation is at `/documentation`.
 
 ## MVP capabilities
