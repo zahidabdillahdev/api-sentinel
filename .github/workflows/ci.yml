@@ -11,6 +11,8 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/api_sentinel
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
