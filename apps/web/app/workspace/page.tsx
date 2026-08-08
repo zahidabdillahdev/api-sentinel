@@ -59,6 +59,13 @@ type Collection = {
     assertions: Array<{ expectedStatus: number }>;
   }>;
 };
+type Schedule = {
+  id: string;
+  name: string;
+  cron: string;
+  timezone: string;
+  enabled: boolean;
+};
 type Run = {
   id: string;
   status: string;
@@ -111,6 +118,7 @@ export default function Workspace() {
   const [collectionId, setCollectionId] = useState("");
   const [run, setRun] = useState<Run | null>(null);
   const [history, setHistory] = useState<Run[]>([]);
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [organizationId, setOrganizationId] = useState("");
   const [projectId, setProjectId] = useState("");
   const [message, setMessage] = useState("");
@@ -207,6 +215,12 @@ export default function Workspace() {
       await request<Run[]>(`/collections/${id}/runs?limit=10`, activeToken),
     );
   }
+  async function loadSchedules(activeToken: string, id: string) {
+    if (!id) return setSchedules([]);
+    setSchedules(
+      await request<Schedule[]>(`/collections/${id}/schedules`, activeToken),
+    );
+  }
   useEffect(() => {
     const saved = localStorage.getItem("api-sentinel-token");
     if (saved)
@@ -235,6 +249,9 @@ export default function Workspace() {
   }, [token, secretEnvironmentId]);
   useEffect(() => {
     if (token) void loadHistory(token, collectionId);
+  }, [token, collectionId]);
+  useEffect(() => {
+    if (token) void loadSchedules(token, collectionId);
   }, [token, collectionId]);
   useEffect(() => {
     if (token) void loadVersions(token, specificationId);
@@ -507,6 +524,42 @@ export default function Workspace() {
       );
     } finally {
       setBusy(false);
+    }
+  }
+  async function createSchedule(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !collectionId) return;
+    try {
+      const form = new FormData(event.currentTarget);
+      await request(`/collections/${collectionId}/schedules`, token, {
+        method: "POST",
+        body: JSON.stringify({
+          name: form.get("name"),
+          cron: form.get("cron"),
+          timezone: form.get("timezone"),
+        }),
+      });
+      await loadSchedules(token, collectionId);
+      setMessage("Schedule created. The first run may be queued immediately.");
+      event.currentTarget.reset();
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Unable to create schedule",
+      );
+    }
+  }
+  async function toggleSchedule(schedule: Schedule) {
+    if (!token) return;
+    try {
+      await request(`/schedules/${schedule.id}`, token, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled: !schedule.enabled }),
+      });
+      await loadSchedules(token, collectionId);
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Unable to update schedule",
+      );
     }
   }
   if (!user)
@@ -881,6 +934,44 @@ export default function Workspace() {
                   </p>
                 ))}
               </details>
+            ))}
+          </div>
+        )}
+        {collectionId && (
+          <div>
+            <p className="eyebrow">SCHEDULES</p>
+            <h3>Automate collection runs</h3>
+            <form onSubmit={createSchedule}>
+              <label>
+                Schedule name
+                <input name="name" placeholder="Every five minutes" required />
+              </label>
+              <label>
+                Cron expression
+                <input name="cron" defaultValue="0 */5 * * * *" required />
+              </label>
+              <label>
+                Timezone
+                <input name="timezone" defaultValue="Asia/Jakarta" required />
+              </label>
+              <p className="muted">
+                BullMQ cron supports an optional seconds field. New schedules
+                may enqueue their first run immediately.
+              </p>
+              <button className="button secondary">Create schedule</button>
+            </form>
+            {schedules.map((schedule) => (
+              <p key={schedule.id}>
+                <strong>{schedule.enabled ? "ACTIVE" : "PAUSED"}</strong>{" "}
+                {schedule.name} · <code>{schedule.cron}</code> ·{" "}
+                {schedule.timezone}{" "}
+                <button
+                  className="link-button"
+                  onClick={() => toggleSchedule(schedule)}
+                >
+                  {schedule.enabled ? "Pause" : "Enable"}
+                </button>
+              </p>
             ))}
           </div>
         )}

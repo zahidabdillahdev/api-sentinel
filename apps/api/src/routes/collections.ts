@@ -10,6 +10,7 @@ import { assertSafeTarget } from "../lib/safe-url.js";
 const projectParams = z.object({ projectId: z.string().cuid() });
 const collectionParams = z.object({ collectionId: z.string().cuid() });
 const runParams = z.object({ runId: z.string().cuid() });
+const scheduleParams = z.object({ scheduleId: z.string().cuid() });
 const historyQuery = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(10),
 });
@@ -17,6 +18,24 @@ const collectionBody = z.object({
   name: z.string().min(2).max(100),
   environmentId: z.string().cuid().optional(),
 });
+const scheduleBody = z.object({
+  name: z.string().min(2).max(100),
+  cron: z.string().min(5).max(100),
+  timezone: z
+    .string()
+    .min(1)
+    .max(100)
+    .default("UTC")
+    .refine((timezone) => {
+      try {
+        new Intl.DateTimeFormat("en", { timeZone: timezone }).format();
+        return true;
+      } catch {
+        return false;
+      }
+    }, "Invalid IANA timezone"),
+});
+const scheduleStateBody = z.object({ enabled: z.boolean() });
 const requestBody = z
   .object({
     name: z.string().min(2).max(100),
@@ -106,6 +125,21 @@ async function runForUser(
   if (!run) throw notFound("Execution run");
   await requireProjectRole(app, userId, run.collection.projectId);
   return run;
+}
+
+async function scheduleForUser(
+  app: Parameters<FastifyPluginAsync>[0],
+  userId: string,
+  scheduleId: string,
+  role: "VIEWER" | "MEMBER" = "VIEWER",
+) {
+  const schedule = await app.prisma.schedule.findUnique({
+    where: { id: scheduleId },
+    include: { collection: { select: { projectId: true } } },
+  });
+  if (!schedule) throw notFound("Schedule");
+  await requireProjectRole(app, userId, schedule.collection.projectId, role);
+  return schedule;
 }
 
 export const collectionRoutes: FastifyPluginAsync = async (app) => {
@@ -262,4 +296,143 @@ export const collectionRoutes: FastifyPluginAsync = async (app) => {
       },
     });
   });
+
+  app.get(
+    "/collections/:collectionId/schedules",
+    { preHandler: app.authenticate },
+    async (request) => {
+      const { collectionId } = collectionParams.parse(request.params);
+      await collectionForUser(app, authenticatedUserId(request), collectionId);
+      return app.prisma.schedule.findMany({
+        where: { collectionId },
+        orderBy: { createdAt: "desc" },
+      });
+    },
+  );
+
+  app.post(
+    "/collections/:collectionId/schedules",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const { collectionId } = collectionParams.parse(request.params);
+      await collectionForUser(
+        app,
+        authenticatedUserId(request),
+        collectionId,
+        "MEMBER",
+      );
+      const body = scheduleBody.parse(request.body);
+      let schedule;
+      try {
+        schedule = await app.prisma.schedule.create({
+          data: { collectionId, ...body },
+        });
+      } catch (error) {
+        if ((error as { code?: string }).code === "P2002")
+          throw new AppError(
+            "A schedule with this name already exists",
+            409,
+            "SCHEDULE_NAME_TAKEN",
+          );
+        throw error;
+      }
+      try {
+        await app.runQueue.upsertJobScheduler(
+          schedule.id,
+          { pattern: schedule.cron, tz: schedule.timezone },
+          {
+            name: "scheduled-execution",
+            data: { scheduleId: schedule.id },
+            opts: {
+              attempts: 3,
+              backoff: { type: "exponential", delay: 1_000 },
+              removeOnComplete: 1_000,
+              removeOnFail: 1_000,
+            },
+          },
+        );
+      } catch (error) {
+        await app.prisma.schedule.delete({ where: { id: schedule.id } });
+        throw new AppError(
+          error instanceof Error ? error.message : "Invalid schedule",
+          422,
+          "INVALID_SCHEDULE",
+        );
+      }
+      return reply.code(201).send(schedule);
+    },
+  );
+
+  app.patch(
+    "/schedules/:scheduleId",
+    { preHandler: app.authenticate },
+    async (request) => {
+      const { scheduleId } = scheduleParams.parse(request.params);
+      const { enabled } = scheduleStateBody.parse(request.body);
+      const schedule = await scheduleForUser(
+        app,
+        authenticatedUserId(request),
+        scheduleId,
+        "MEMBER",
+      );
+      if (enabled) {
+        await app.prisma.schedule.update({
+          where: { id: scheduleId },
+          data: { enabled: true },
+        });
+        try {
+          await app.runQueue.upsertJobScheduler(
+            schedule.id,
+            { pattern: schedule.cron, tz: schedule.timezone },
+            {
+              name: "scheduled-execution",
+              data: { scheduleId },
+              opts: {
+                attempts: 3,
+                backoff: { type: "exponential", delay: 1_000 },
+                removeOnComplete: 1_000,
+                removeOnFail: 1_000,
+              },
+            },
+          );
+        } catch (error) {
+          await app.prisma.schedule.update({
+            where: { id: scheduleId },
+            data: { enabled: false },
+          });
+          throw new AppError(
+            error instanceof Error
+              ? error.message
+              : "Unable to enable schedule",
+            422,
+            "INVALID_SCHEDULE",
+          );
+        }
+      } else {
+        await app.runQueue.removeJobScheduler(scheduleId);
+        await app.prisma.schedule.update({
+          where: { id: scheduleId },
+          data: { enabled: false },
+        });
+      }
+      return app.prisma.schedule.findUnique({ where: { id: scheduleId } });
+    },
+  );
+
+  app.delete(
+    "/schedules/:scheduleId",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const { scheduleId } = scheduleParams.parse(request.params);
+      await scheduleForUser(
+        app,
+        authenticatedUserId(request),
+        scheduleId,
+        "MEMBER",
+      );
+      await app.runQueue.removeJobScheduler(scheduleId);
+      await app.prisma.schedule.delete({ where: { id: scheduleId } });
+      return reply.code(204).send();
+    },
+  );
 };

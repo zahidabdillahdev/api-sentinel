@@ -12,6 +12,8 @@ The repository currently runs `web` (Next.js), `api` (Fastify), and a separately
 | Storage | PostgreSQL documents and results | PostgreSQL plus object storage for bounded artifacts |
 | Notifications | Not supported yet | Webhook/email delivery with retries and audit trail |
 
+Collection schedules use BullMQ Job Schedulers keyed by the database schedule ID. The worker creates a new durable execution per occurrence; a partial unique index blocks overlapping `QUEUED`/`RUNNING` executions for the same schedule.
+
 ### Current request path
 
 ```text

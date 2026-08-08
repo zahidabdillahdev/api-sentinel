@@ -10,12 +10,12 @@ API Sentinel is currently an **MVP in active development**, deployed as a Next.j
 | OpenAPI workspace | Delivered | OpenAPI 3.x JSON import, immutable versions, API reference, version diff. |
 | Manual API checks | Delivered | Collections, environments, encrypted secrets, configurable request payloads, assertions, and run history. |
 | OpenAPI smoke generation | Delivered | Generate safe `GET` requests without path parameters from a reference. |
-| Automation | In progress | Durable queued worker execution and retries delivered; schedules and alerts planned. |
+| Automation | In progress | Durable worker execution, retries, and cron schedules delivered; alerts planned. |
 | CI distribution | Planned | CLI, GitHub Action, and machine-readable reports. |
 
 ### Next engineering sequence
 
-1. Add schedules, execution locking, notification rules, and webhook delivery.
+1. Add notification rules and generic webhook delivery with retry history.
 2. Add per-project overview metrics, pagination, retention, and audit events.
 3. Ship a CI-friendly CLI and GitHub Actions example.
 4. Complete HTTPS/custom-domain deployment and expand integration/end-to-end coverage.
@@ -82,9 +82,9 @@ API Sentinel is a team workspace for importing OpenAPI specifications, running A
 
 **Exit condition:** users can execute a saved collection on demand and diagnose a failed assertion.
 
-### M3 — Automation and change safety — planned
+### M3 — Automation and change safety — in progress
 
-- Add cron-like schedules with retry policies and execution locking.
+- Add cron-like schedules with retry policies and execution locking. **Delivered.**
 - Compare two specification versions and classify breaking changes.
 - Create alert rules and generic webhook/email delivery.
 - Ship the CLI and a GitHub Actions example.

@@ -151,6 +151,22 @@ model Collection {
   environment   Environment?   @relation(fields: [environmentId], references: [id], onDelete: SetNull)
   requests      TestRequest[]
   runs          ExecutionRun[]
+  schedules     Schedule[]
+}
+
+model Schedule {
+  id           String         @id @default(cuid())
+  collectionId String
+  name         String
+  cron         String
+  timezone     String         @default("UTC")
+  enabled      Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  collection   Collection     @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  runs         ExecutionRun[]
+
+  @@unique([collectionId, name])
 }
 
 model TestRequest {
@@ -187,7 +203,9 @@ model ExecutionRun {
   startedAt    DateTime?
   finishedAt   DateTime?
   error        String?
+  scheduleId   String?
   collection   Collection      @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  schedule     Schedule?       @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
   results      RequestResult[]
 }
 

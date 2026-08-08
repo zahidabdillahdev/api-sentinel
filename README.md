@@ -45,6 +45,10 @@ JSON expected values must be valid JSON literals: use `"healthy"`, `true`, `42`,
 
 Runs are queued through Redis and executed by a dedicated BullMQ worker. The API returns a durable `QUEUED` run immediately, the dashboard polls through `RUNNING`, and the worker persists terminal results. Jobs retry transient worker failures up to three times with exponential backoff.
 
+### Scheduled monitoring
+
+Select a collection and create a schedule with a BullMQ cron expression and IANA timezone, for example `0 */5 * * * *` with `Asia/Jakarta`. Schedules can be paused and enabled from the workspace. A partial database uniqueness constraint prevents overlapping active runs for the same schedule, and disabled/deleted schedules are removed from Redis.
+
 The workspace keeps the ten most recent executions for the selected collection. Expand an entry to inspect every request result, including its status code, duration, and assertion failure message.
 
 ## Generate smoke tests from OpenAPI
@@ -94,6 +98,7 @@ The API starts at `http://localhost:3001`. Its interactive API documentation is 
 - Breaking-change reports between specification versions
 - Collection test execution with safe outbound-request controls
 - Durable queued execution in a separately scalable worker
+- Cron-based collection schedules with timezone and overlap protection
 - Health endpoint and structured error responses
 
 See [plan.md](./plan.md), [architecture.md](./architecture.md), and [design.md](./design.md) for the product blueprint.
