@@ -6,6 +6,7 @@ const configSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3001),
   DATABASE_URL: z.string().url(),
   APP_ORIGIN: z.string().url().default('http://localhost:3000'),
+  ENCRYPTION_KEY: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
   ALLOW_INSECURE_HTTP_TARGETS: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info')
 });
