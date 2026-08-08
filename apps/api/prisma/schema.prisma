@@ -117,6 +117,7 @@ model Environment {
   baseUrl   String
   createdAt DateTime @default(now())
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  collections Collection[]
   @@unique([projectId, name])
 }
 
@@ -126,6 +127,8 @@ model Collection {
   name      String
   createdAt DateTime       @default(now())
   project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  environmentId String?
+  environment Environment? @relation(fields: [environmentId], references: [id], onDelete: SetNull)
   requests  TestRequest[]
   runs      ExecutionRun[]
 }
