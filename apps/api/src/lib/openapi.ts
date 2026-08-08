@@ -7,10 +7,15 @@ export type OpenApiDocument = {
   components?: { schemas?: Record<string, Schema> };
 };
 
-type Operation = { parameters?: Parameter[]; responses?: Record<string, unknown>; requestBody?: unknown };
-type Parameter = { name: string; in: string; required?: boolean; schema?: Schema };
+type Operation = { operationId?: string; summary?: string; description?: string; tags?: string[]; parameters?: Parameter[]; responses?: Record<string, unknown>; requestBody?: unknown };
+type Parameter = { name: string; in: string; description?: string; required?: boolean; schema?: Schema };
 type Schema = { type?: string; enum?: unknown[]; required?: string[]; properties?: Record<string, Schema> };
 export type Change = { severity: 'BREAKING' | 'POTENTIALLY_BREAKING' | 'NON_BREAKING'; code: string; location: string; message: string };
+export type ApiReferenceOperation = {
+  method: string; path: string; operationId?: string; summary?: string; description?: string; tags: string[];
+  parameters: Array<{ name: string; in: string; description?: string; required: boolean; schema?: Schema }>;
+  hasRequestBody: boolean; responseCodes: string[];
+};
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options']);
 
@@ -30,6 +35,15 @@ function operations(document: OpenApiDocument) {
 }
 
 function schemas(document: OpenApiDocument) { return document.components?.schemas ?? {}; }
+
+export function buildApiReference(document: OpenApiDocument) {
+  const reference = operations(document).map(({ path, method, operation }) => ({
+    method: method.toUpperCase(), path, operationId: operation.operationId, summary: operation.summary, description: operation.description,
+    tags: operation.tags ?? [], hasRequestBody: Boolean(operation.requestBody), responseCodes: Object.keys(operation.responses ?? {}).sort(),
+    parameters: (operation.parameters ?? []).map(({ name, in: location, description, required, schema }) => ({ name, in: location, description, required: Boolean(required), schema }))
+  } satisfies ApiReferenceOperation));
+  return { title: document.info.title, apiVersion: document.info.version, operationCount: reference.length, operations: reference };
+}
 
 export function diffOpenApi(before: OpenApiDocument, after: OpenApiDocument): Change[] {
   const changes: Change[] = [];

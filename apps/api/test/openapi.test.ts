@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { diffOpenApi, validateOpenApi } from '../src/lib/openapi.js';
+import { buildApiReference, diffOpenApi, validateOpenApi } from '../src/lib/openapi.js';
 
 const baseline = {
   openapi: '3.0.3',
@@ -34,5 +34,14 @@ describe('OpenAPI diff', () => {
     const next = structuredClone(baseline);
     next.paths['/pets'] = { post: { responses: { '201': { description: 'Created' } } } };
     expect(diffOpenApi(validateOpenApi(baseline), validateOpenApi(next))).toContainEqual(expect.objectContaining({ code: 'OPERATION_ADDED', severity: 'NON_BREAKING' }));
+  });
+});
+
+describe('API reference', () => {
+  it('creates readable operation metadata from an OpenAPI document', () => {
+    const reference = buildApiReference(validateOpenApi(baseline));
+    expect(reference).toMatchObject({ title: 'Pets', apiVersion: '1.0.0', operationCount: 1 });
+    expect(reference.operations[0]).toMatchObject({ method: 'GET', path: '/pets/{id}', responseCodes: ['200', '404'] });
+    expect(reference.operations[0].parameters).toContainEqual(expect.objectContaining({ name: 'id', in: 'path', required: true }));
   });
 });

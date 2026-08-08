@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { diffOpenApi, validateOpenApi } from '../lib/openapi.js';
+import { buildApiReference, diffOpenApi, validateOpenApi } from '../lib/openapi.js';
 import { notFound } from '../lib/errors.js';
 import { authenticatedUserId, requireProjectRole, requireSpecificationRole } from '../lib/authorization.js';
 
@@ -42,5 +42,13 @@ export const specificationRoutes: FastifyPluginAsync = async (app) => {
     if (!before || !after) throw notFound('Specification version');
     const changes = diffOpenApi(validateOpenApi(before.document), validateOpenApi(after.document));
     return { from, to, summary: { breaking: changes.filter((change) => change.severity === 'BREAKING').length, total: changes.length }, changes };
+  });
+
+  app.get('/specification-versions/:versionId/reference', { preHandler: app.authenticate }, async (request) => {
+    const { versionId } = z.object({ versionId: z.string().cuid() }).parse(request.params);
+    const version = await app.prisma.specificationVersion.findUnique({ where: { id: versionId }, include: { specification: { select: { projectId: true } } } });
+    if (!version) throw notFound('Specification version');
+    await requireProjectRole(app, authenticatedUserId(request), version.specification.projectId);
+    return { id: version.id, version: version.version, ...buildApiReference(validateOpenApi(version.document)) };
   });
 };
