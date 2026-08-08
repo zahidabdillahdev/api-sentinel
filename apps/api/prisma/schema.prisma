@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProjectRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum SpecificationSource {
+  UPLOAD
+  URL
+}
+
+enum DiffSeverity {
+  BREAKING
+  POTENTIALLY_BREAKING
+  NON_BREAKING
+}
+
+model Organization {
+  id        String       @id @default(cuid())
+  name      String
+  slug      String       @unique
+  createdAt DateTime     @default(now())
+  members   Membership[]
+  projects  Project[]
+}
+
+model User {
+  id        String       @id @default(cuid())
+  email     String       @unique
+  name      String?
+  createdAt DateTime     @default(now())
+  memberships Membership[]
+}
+
+model Membership {
+  id             String      @id @default(cuid())
+  organizationId String
+  userId         String
+  role           ProjectRole @default(MEMBER)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([organizationId, userId])
+}
+
+model Project {
+  id             String          @id @default(cuid())
+  organizationId String
+  name           String
+  slug           String
+  createdAt      DateTime        @default(now())
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  specifications Specification[]
+  @@unique([organizationId, slug])
+}
+
+model Specification {
+  id        String                 @id @default(cuid())
+  projectId String
+  name      String
+  createdAt DateTime               @default(now())
+  project   Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  versions  SpecificationVersion[]
+}
+
+model SpecificationVersion {
+  id              String              @id @default(cuid())
+  specificationId String
+  version         Int
+  source          SpecificationSource
+  sourceUrl       String?
+  document        Json
+  title           String
+  apiVersion      String
+  createdAt       DateTime            @default(now())
+  specification   Specification       @relation(fields: [specificationId], references: [id], onDelete: Cascade)
+  @@unique([specificationId, version])
+}
