@@ -10,6 +10,7 @@ type Organization = {
   members: Array<{ role: string }>;
 };
 type Project = { id: string; name: string };
+type Environment = { id: string; name: string; baseUrl: string };
 type Specification = {
   id: string;
   name: string;
@@ -94,6 +95,7 @@ export default function Workspace() {
   const [user, setUser] = useState<User | null>(null);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [environments, setEnvironments] = useState<Environment[]>([]);
   const [specifications, setSpecifications] = useState<Specification[]>([]);
   const [reference, setReference] = useState<Reference | null>(null);
   const [specificationId, setSpecificationId] = useState("");
@@ -170,6 +172,10 @@ export default function Workspace() {
         : (items[0]?.id ?? ""),
     );
   }
+  async function loadEnvironments(activeToken: string, id: string) {
+    if (!id) return setEnvironments([]);
+    setEnvironments(await request<Environment[]>(`/projects/${id}/environments`, activeToken));
+  }
   async function loadHistory(activeToken: string, id: string) {
     if (!id) {
       setHistory([]);
@@ -199,6 +205,7 @@ export default function Workspace() {
   useEffect(() => {
     if (token) void loadCollections(token, projectId);
   }, [token, projectId]);
+  useEffect(() => { if (token) void loadEnvironments(token, projectId); }, [token, projectId]);
   useEffect(() => {
     if (token) void loadHistory(token, collectionId);
   }, [token, collectionId]);
@@ -264,6 +271,11 @@ export default function Workspace() {
     });
     await loadProjects(token, organizationId);
     event.currentTarget.reset();
+  }
+  async function createEnvironment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!token || !projectId) return;
+    try { const form = new FormData(event.currentTarget); await request(`/projects/${projectId}/environments`, token, { method: "POST", body: JSON.stringify({ name: form.get("name"), baseUrl: form.get("baseUrl") }) }); await loadEnvironments(token, projectId); event.currentTarget.reset(); }
+    catch (error) { setMessage(error instanceof Error ? error.message : "Unable to create environment"); }
   }
   async function importSpec(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -357,7 +369,7 @@ export default function Workspace() {
       const form = new FormData(event.currentTarget);
       await request(`/projects/${projectId}/collections`, token, {
         method: "POST",
-        body: JSON.stringify({ name: form.get("name") }),
+        body: JSON.stringify({ name: form.get("name"), environmentId: form.get("environmentId") || undefined }),
       });
       await loadCollections(token, projectId);
       event.currentTarget.reset();
@@ -525,6 +537,16 @@ export default function Workspace() {
         </article>
       </section>
       <section className="panel">
+        <p className="eyebrow">ENVIRONMENTS</p>
+        <h2>Configure a base URL</h2>
+        <form onSubmit={createEnvironment}>
+          <label>Environment name<input name="name" placeholder="staging" required disabled={!projectId} /></label>
+          <label>Base URL<input name="baseUrl" type="url" placeholder="https://staging.api.example.com" required disabled={!projectId} /></label>
+          <button className="button secondary" disabled={!projectId}>Create environment</button>
+        </form>
+        {environments.map((environment) => <p key={environment.id}><strong>{environment.name}</strong> <code>{environment.baseUrl}</code></p>)}
+      </section>
+      <section className="panel">
         <p className="eyebrow">TEST COLLECTIONS</p>
         <h2>Run an API check</h2>
         <form onSubmit={createCollection}>
@@ -536,6 +558,13 @@ export default function Workspace() {
               required
               disabled={!projectId}
             />
+          </label>
+          <label>
+            Environment
+            <select name="environmentId" disabled={!projectId}>
+              <option value="">No environment</option>
+              {environments.map((environment) => <option key={environment.id} value={environment.id}>{environment.name} — {environment.baseUrl}</option>)}
+            </select>
           </label>
           <button className="button secondary" disabled={!projectId}>
             Create collection
