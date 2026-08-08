@@ -34,7 +34,16 @@ Sessions expire after seven days. The database stores only a SHA-256 digest of e
 
 ## Test collections and target safety
 
-Collections run public HTTP requests and assert expected status codes. The runner blocks localhost, private-network, link-local, and cloud-metadata targets, disallows redirects, and enforces a ten-second timeout.
+Collections run public HTTP requests and can assert:
+
+- Exact HTTP status code (required)
+- Exact response header value (optional)
+- A JSON value via a dot path such as `$.slideshow.title` (optional)
+- Maximum response duration, up to 10 seconds (optional)
+
+JSON expected values must be valid JSON literals: use `"healthy"`, `true`, `42`, or `{ "key": "value" }`. Header and JSON checks require both of their corresponding fields. Each run records the status, duration, pass/fail state, and a readable failure reason.
+
+The runner blocks localhost, private-network, link-local, and cloud-metadata targets, disallows redirects, and enforces a ten-second timeout.
 
 HTTPS is required by default. Developer teams can explicitly support public HTTP staging or mock targets by setting the following environment variable:
 

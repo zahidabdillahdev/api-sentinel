@@ -7,7 +7,15 @@ import { assertSafeTarget } from '../lib/safe-url.js';
 const projectParams = z.object({ projectId: z.string().cuid() });
 const collectionParams = z.object({ collectionId: z.string().cuid() });
 const collectionBody = z.object({ name: z.string().min(2).max(100) });
-const requestBody = z.object({ name: z.string().min(2).max(100), method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']), url: z.string().url(), expectedStatus: z.number().int().min(100).max(599), expectedHeaderName: z.string().min(1).max(100).optional(), expectedHeaderValue: z.string().max(500).optional(), jsonPath: z.string().regex(/^\$\.[A-Za-z0-9_.-]+$/).optional(), expectedJsonValue: z.string().max(2000).optional(), maxDurationMs: z.number().int().positive().max(10_000).optional() }).refine((body) => Boolean(body.expectedHeaderName) === Boolean(body.expectedHeaderValue), { message: 'Header name and value must be provided together' }).refine((body) => Boolean(body.jsonPath) === Boolean(body.expectedJsonValue), { message: 'JSON path and expected value must be provided together' });
+const requestBody = z.object({
+  name: z.string().min(2).max(100), method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']), url: z.string().url(), expectedStatus: z.number().int().min(100).max(599),
+  expectedHeaderName: z.string().min(1).max(100).optional(), expectedHeaderValue: z.string().max(500).optional(),
+  jsonPath: z.string().regex(/^\$\.[A-Za-z0-9_.-]+$/).optional(), expectedJsonValue: z.string().max(2000).optional(), maxDurationMs: z.number().int().positive().max(10_000).optional(),
+}).superRefine((body, context) => {
+  if (Boolean(body.expectedHeaderName) !== Boolean(body.expectedHeaderValue)) context.addIssue({ code: 'custom', message: 'Header name and value must be provided together' });
+  if (Boolean(body.jsonPath) !== Boolean(body.expectedJsonValue)) context.addIssue({ code: 'custom', message: 'JSON path and expected value must be provided together' });
+  if (body.expectedJsonValue) { try { JSON.parse(body.expectedJsonValue); } catch { context.addIssue({ code: 'custom', path: ['expectedJsonValue'], message: 'Expected JSON value must be valid JSON' }); } }
+});
 
 async function collectionForUser(app: Parameters<FastifyPluginAsync>[0], userId: string, collectionId: string, role: 'VIEWER' | 'MEMBER' = 'VIEWER') {
   const collection = await app.prisma.collection.findUnique({ where: { id: collectionId }, include: { project: { select: { id: true } } } });
