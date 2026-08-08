@@ -125,6 +125,11 @@ model TestRequest {
   name         String
   method       HttpMethod
   url          String
+  expectedHeaderName  String?
+  expectedHeaderValue String?
+  jsonPath     String?
+  expectedJsonValue String?
+  maxDurationMs Int?
   createdAt    DateTime          @default(now())
   collection   Collection        @relation(fields: [collectionId], references: [id], onDelete: Cascade)
   assertions   StatusAssertion[]
