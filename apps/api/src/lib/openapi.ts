@@ -16,6 +16,7 @@ export type ApiReferenceOperation = {
   parameters: Array<{ name: string; in: string; description?: string; required: boolean; schema?: Schema }>;
   hasRequestBody: boolean; responseCodes: string[];
 };
+export type GeneratedSmokeRequest = { name: string; method: 'GET'; path: string; expectedStatus: number };
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options']);
 
@@ -43,6 +44,17 @@ export function buildApiReference(document: OpenApiDocument) {
     parameters: (operation.parameters ?? []).map(({ name, in: location, description, required, schema }) => ({ name, in: location, description, required: Boolean(required), schema }))
   } satisfies ApiReferenceOperation));
   return { title: document.info.title, apiVersion: document.info.version, operationCount: reference.length, operations: reference };
+}
+
+export function buildSmokeRequests(document: OpenApiDocument): GeneratedSmokeRequest[] {
+  return buildApiReference(document).operations
+    .filter((operation) => operation.method === 'GET' && !operation.path.includes('{'))
+    .map((operation) => ({
+      name: operation.summary ?? `GET ${operation.path}`,
+      method: 'GET' as const,
+      path: operation.path,
+      expectedStatus: Number(operation.responseCodes.find((code) => /^2\d\d$/.test(code)) ?? 200),
+    }));
 }
 
 export function diffOpenApi(before: OpenApiDocument, after: OpenApiDocument): Change[] {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildApiReference, diffOpenApi, validateOpenApi } from '../src/lib/openapi.js';
+import { buildApiReference, buildSmokeRequests, diffOpenApi, validateOpenApi } from '../src/lib/openapi.js';
 
 const baseline = {
   openapi: '3.0.3',
@@ -43,5 +43,10 @@ describe('API reference', () => {
     expect(reference).toMatchObject({ title: 'Pets', apiVersion: '1.0.0', operationCount: 1 });
     expect(reference.operations[0]).toMatchObject({ method: 'GET', path: '/pets/{id}', responseCodes: ['200', '404'] });
     expect(reference.operations[0].parameters).toContainEqual(expect.objectContaining({ name: 'id', in: 'path', required: true }));
+  });
+
+  it('creates smoke requests only for GET paths without parameters', () => {
+    const document = { ...baseline, paths: { '/health': { get: { summary: 'Health', responses: { '204': {} } } }, '/pets/{id}': baseline.paths['/pets/{id}'], '/pets': { post: { responses: { '201': {} } } } } };
+    expect(buildSmokeRequests(validateOpenApi(document))).toEqual([{ name: 'Health', method: 'GET', path: '/health', expectedStatus: 204 }]);
   });
 });

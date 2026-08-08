@@ -1,10 +1,12 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { buildApiReference, diffOpenApi, validateOpenApi } from '../lib/openapi.js';
-import { notFound } from '../lib/errors.js';
+import { buildApiReference, buildSmokeRequests, diffOpenApi, validateOpenApi } from '../lib/openapi.js';
+import { AppError, notFound } from '../lib/errors.js';
 import { authenticatedUserId, requireProjectRole, requireSpecificationRole } from '../lib/authorization.js';
+import { assertSafeTarget } from '../lib/safe-url.js';
 
 const importSchema = z.object({ name: z.string().min(1).max(150), document: z.unknown(), sourceUrl: z.string().url().optional() });
+const generateCollectionSchema = z.object({ baseUrl: z.string().url(), name: z.string().min(2).max(100).optional() });
 
 export const specificationRoutes: FastifyPluginAsync = async (app) => {
   app.get('/projects/:projectId/specifications', { preHandler: app.authenticate }, async (request) => {
@@ -50,5 +52,26 @@ export const specificationRoutes: FastifyPluginAsync = async (app) => {
     if (!version) throw notFound('Specification version');
     await requireProjectRole(app, authenticatedUserId(request), version.specification.projectId);
     return { id: version.id, version: version.version, ...buildApiReference(validateOpenApi(version.document)) };
+  });
+
+  app.post('/specification-versions/:versionId/collections', { preHandler: app.authenticate }, async (request, reply) => {
+    const { versionId } = z.object({ versionId: z.string().cuid() }).parse(request.params);
+    const body = generateCollectionSchema.parse(request.body);
+    const version = await app.prisma.specificationVersion.findUnique({ where: { id: versionId }, include: { specification: { select: { projectId: true } } } });
+    if (!version) throw notFound('Specification version');
+    await requireProjectRole(app, authenticatedUserId(request), version.specification.projectId, 'MEMBER');
+    await assertSafeTarget(body.baseUrl);
+    const requests = buildSmokeRequests(validateOpenApi(version.document));
+    if (requests.length === 0) throw new AppError('No eligible GET endpoints were found. Endpoints with path parameters are skipped.', 422, 'NO_ELIGIBLE_OPERATIONS');
+    const baseUrl = body.baseUrl.replace(/\/+$/, '');
+    const collection = await app.prisma.collection.create({
+      data: {
+        projectId: version.specification.projectId,
+        name: body.name ?? `${version.title} smoke tests`,
+        requests: { create: requests.map((item) => ({ name: item.name, method: item.method, url: `${baseUrl}${item.path}`, assertions: { create: { expectedStatus: item.expectedStatus } } })) },
+      },
+      include: { requests: { include: { assertions: true } } },
+    });
+    return reply.code(201).send({ ...collection, generatedCount: requests.length });
   });
 };
