@@ -8,7 +8,7 @@ API Sentinel is currently an **MVP in active development**, deployed as a Next.j
 | --- | --- | --- |
 | Identity and access | Delivered | Register/login sessions, organization membership, invitations, project-scoped RBAC. |
 | OpenAPI workspace | Delivered | OpenAPI 3.x JSON import, immutable versions, API reference, version diff. |
-| Manual API checks | Delivered | Collections, public-target safety controls, status/header/JSON/duration assertions, run history. |
+| Manual API checks | Delivered | Collections, environments, encrypted secrets, configurable request payloads, assertions, and run history. |
 | OpenAPI smoke generation | Delivered | Generate safe `GET` requests without path parameters from a reference. |
 | Automation | Planned | Scheduled runs, retries, alerts, and a background worker. |
 | CI distribution | Planned | CLI, GitHub Action, and machine-readable reports. |

@@ -1,13 +1,23 @@
-import { describe, expect, it } from 'vitest';
-import { resolveVariables } from '../src/lib/variables.js';
+import { describe, expect, it } from "vitest";
+import { redactSecrets, resolveVariables } from "../src/lib/variables.js";
 
-describe('environment variable resolver', () => {
-  it('replaces variables in URL, headers, and body text', () => {
-    const variables = { baseUrl: 'https://staging.example.com', version: 'v1' };
-    expect(resolveVariables('{{baseUrl}}/{{version}}/health', variables)).toBe('https://staging.example.com/v1/health');
+describe("environment variable resolver", () => {
+  it("replaces variables in URL, headers, and body text", () => {
+    const variables = { baseUrl: "https://staging.example.com", version: "v1" };
+    expect(resolveVariables("{{baseUrl}}/{{version}}/health", variables)).toBe(
+      "https://staging.example.com/v1/health",
+    );
   });
 
-  it('rejects missing variables with an actionable error', () => {
-    expect(() => resolveVariables('{{token}}', {})).toThrow('Environment variable "token" is not configured');
+  it("rejects missing variables with an actionable error", () => {
+    expect(() => resolveVariables("{{token}}", {})).toThrow(
+      'Environment variable "token" is not configured',
+    );
+  });
+
+  it("redacts every secret value from errors", () => {
+    expect(
+      redactSecrets("request token-123 failed with token-123", ["token-123"]),
+    ).toBe("request [REDACTED] failed with [REDACTED]");
   });
 });

@@ -49,6 +49,18 @@ The workspace keeps the ten most recent executions for the selected collection. 
 
 Open a specification reference in the workspace, provide its public API base URL, then select **Create smoke tests from OpenAPI**. API Sentinel creates one request for every eligible `GET` endpoint and derives its expected successful status code from the specification. To avoid accidental writes or incomplete URLs, `POST`, `PUT`, `PATCH`, `DELETE`, and paths containing parameters such as `/users/{id}` are skipped.
 
+## Environment secrets
+
+Each project environment can store write-only secrets such as `token` or `apiKey`. Reference them in request headers or bodies with `{{token}}`. Values are encrypted with AES-256-GCM before persistence, are never returned by read endpoints, are decrypted only during execution, and are redacted from stored execution errors.
+
+Production requires a unique 32-byte encryption key encoded as 64 hexadecimal characters:
+
+```bash
+ENCRYPTION_KEY=replace-with-64-random-hex-characters
+```
+
+Keep this key outside Git and back it up in a secret manager. Losing it makes existing secrets unrecoverable; changing it requires a controlled key-rotation migration.
+
 The runner blocks localhost, private-network, link-local, and cloud-metadata targets, disallows redirects, and enforces a ten-second timeout.
 
 HTTPS is required by default. Developer teams can explicitly support public HTTP staging or mock targets by setting the following environment variable:

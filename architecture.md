@@ -8,7 +8,7 @@ The repository currently runs three Compose services: `web` (Next.js), `api` (Fa
 | --- | --- | --- |
 | Execution | Fastify request handler | BullMQ worker, queue isolation, retries, cancellation |
 | State | `ExecutionRun` written after request work | Durable queued/running/terminal state machine |
-| Secrets | Not supported yet | Envelope-encrypted environment secret references |
+| Secrets | AES-256-GCM environment secrets using a deployment key | Managed-key envelope encryption and rotation |
 | Storage | PostgreSQL documents and results | PostgreSQL plus object storage for bounded artifacts |
 | Notifications | Not supported yet | Webhook/email delivery with retries and audit trail |
 

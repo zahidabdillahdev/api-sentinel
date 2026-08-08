@@ -9,6 +9,8 @@ const configSchema = z.object({
   ENCRYPTION_KEY: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
   ALLOW_INSECURE_HTTP_TARGETS: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info')
+}).superRefine((values, context) => {
+  if (values.NODE_ENV === 'production' && !values.ENCRYPTION_KEY) context.addIssue({ code: 'custom', path: ['ENCRYPTION_KEY'], message: 'ENCRYPTION_KEY is required in production' });
 });
 
 export const config = configSchema.parse(process.env);

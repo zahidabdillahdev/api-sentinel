@@ -11,6 +11,7 @@ type Organization = {
 };
 type Project = { id: string; name: string };
 type Environment = { id: string; name: string; baseUrl: string };
+type EnvironmentSecret = { id: string; name: string; createdAt: string };
 type Specification = {
   id: string;
   name: string;
@@ -96,6 +97,8 @@ export default function Workspace() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [environments, setEnvironments] = useState<Environment[]>([]);
+  const [secretEnvironmentId, setSecretEnvironmentId] = useState("");
+  const [secrets, setSecrets] = useState<EnvironmentSecret[]>([]);
   const [specifications, setSpecifications] = useState<Specification[]>([]);
   const [reference, setReference] = useState<Reference | null>(null);
   const [specificationId, setSpecificationId] = useState("");
@@ -174,7 +177,25 @@ export default function Workspace() {
   }
   async function loadEnvironments(activeToken: string, id: string) {
     if (!id) return setEnvironments([]);
-    setEnvironments(await request<Environment[]>(`/projects/${id}/environments`, activeToken));
+    const items = await request<Environment[]>(
+      `/projects/${id}/environments`,
+      activeToken,
+    );
+    setEnvironments(items);
+    setSecretEnvironmentId((current) =>
+      items.some((item) => item.id === current)
+        ? current
+        : (items[0]?.id ?? ""),
+    );
+  }
+  async function loadSecrets(activeToken: string, id: string) {
+    if (!id) return setSecrets([]);
+    setSecrets(
+      await request<EnvironmentSecret[]>(
+        `/environments/${id}/secrets`,
+        activeToken,
+      ),
+    );
   }
   async function loadHistory(activeToken: string, id: string) {
     if (!id) {
@@ -205,7 +226,12 @@ export default function Workspace() {
   useEffect(() => {
     if (token) void loadCollections(token, projectId);
   }, [token, projectId]);
-  useEffect(() => { if (token) void loadEnvironments(token, projectId); }, [token, projectId]);
+  useEffect(() => {
+    if (token) void loadEnvironments(token, projectId);
+  }, [token, projectId]);
+  useEffect(() => {
+    if (token) void loadSecrets(token, secretEnvironmentId);
+  }, [token, secretEnvironmentId]);
   useEffect(() => {
     if (token) void loadHistory(token, collectionId);
   }, [token, collectionId]);
@@ -273,9 +299,45 @@ export default function Workspace() {
     event.currentTarget.reset();
   }
   async function createEnvironment(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!token || !projectId) return;
-    try { const form = new FormData(event.currentTarget); await request(`/projects/${projectId}/environments`, token, { method: "POST", body: JSON.stringify({ name: form.get("name"), baseUrl: form.get("baseUrl") }) }); await loadEnvironments(token, projectId); event.currentTarget.reset(); }
-    catch (error) { setMessage(error instanceof Error ? error.message : "Unable to create environment"); }
+    event.preventDefault();
+    if (!token || !projectId) return;
+    try {
+      const form = new FormData(event.currentTarget);
+      await request(`/projects/${projectId}/environments`, token, {
+        method: "POST",
+        body: JSON.stringify({
+          name: form.get("name"),
+          baseUrl: form.get("baseUrl"),
+        }),
+      });
+      await loadEnvironments(token, projectId);
+      event.currentTarget.reset();
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Unable to create environment",
+      );
+    }
+  }
+  async function saveSecret(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !secretEnvironmentId) return;
+    try {
+      const form = new FormData(event.currentTarget);
+      await request(`/environments/${secretEnvironmentId}/secrets`, token, {
+        method: "POST",
+        body: JSON.stringify({
+          name: form.get("name"),
+          value: form.get("value"),
+        }),
+      });
+      await loadSecrets(token, secretEnvironmentId);
+      setMessage("Secret saved securely. Its value cannot be read back.");
+      event.currentTarget.reset();
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Unable to save secret",
+      );
+    }
   }
   async function importSpec(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -369,7 +431,10 @@ export default function Workspace() {
       const form = new FormData(event.currentTarget);
       await request(`/projects/${projectId}/collections`, token, {
         method: "POST",
-        body: JSON.stringify({ name: form.get("name"), environmentId: form.get("environmentId") || undefined }),
+        body: JSON.stringify({
+          name: form.get("name"),
+          environmentId: form.get("environmentId") || undefined,
+        }),
       });
       await loadCollections(token, projectId);
       event.currentTarget.reset();
@@ -540,11 +605,81 @@ export default function Workspace() {
         <p className="eyebrow">ENVIRONMENTS</p>
         <h2>Configure a base URL</h2>
         <form onSubmit={createEnvironment}>
-          <label>Environment name<input name="name" placeholder="staging" required disabled={!projectId} /></label>
-          <label>Base URL<input name="baseUrl" type="url" placeholder="https://staging.api.example.com" required disabled={!projectId} /></label>
-          <button className="button secondary" disabled={!projectId}>Create environment</button>
+          <label>
+            Environment name
+            <input
+              name="name"
+              placeholder="staging"
+              required
+              disabled={!projectId}
+            />
+          </label>
+          <label>
+            Base URL
+            <input
+              name="baseUrl"
+              type="url"
+              placeholder="https://staging.api.example.com"
+              required
+              disabled={!projectId}
+            />
+          </label>
+          <button className="button secondary" disabled={!projectId}>
+            Create environment
+          </button>
         </form>
-        {environments.map((environment) => <p key={environment.id}><strong>{environment.name}</strong> <code>{environment.baseUrl}</code></p>)}
+        {environments.map((environment) => (
+          <p key={environment.id}>
+            <strong>{environment.name}</strong>{" "}
+            <code>{environment.baseUrl}</code>
+          </p>
+        ))}
+        {environments.length > 0 && (
+          <form onSubmit={saveSecret}>
+            <label>
+              Secret environment
+              <select
+                value={secretEnvironmentId}
+                onChange={(event) => setSecretEnvironmentId(event.target.value)}
+              >
+                {environments.map((environment) => (
+                  <option key={environment.id} value={environment.id}>
+                    {environment.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Secret name
+              <input
+                name="name"
+                placeholder="token"
+                pattern="[A-Za-z_][A-Za-z0-9_]*"
+                required
+              />
+            </label>
+            <label>
+              Secret value
+              <input
+                name="value"
+                type="password"
+                autoComplete="new-password"
+                required
+              />
+            </label>
+            <p className="muted">
+              Use it as <code>{"{{token}}"}</code> in request headers or body.
+              The value is encrypted and cannot be read back.
+            </p>
+            <button className="button secondary">Save secret</button>
+          </form>
+        )}
+        {secrets.map((secret) => (
+          <p key={secret.id}>
+            🔒 <code>{`{{${secret.name}}}`}</code>{" "}
+            <span className="muted">value hidden</span>
+          </p>
+        ))}
       </section>
       <section className="panel">
         <p className="eyebrow">TEST COLLECTIONS</p>
@@ -563,7 +698,11 @@ export default function Workspace() {
             Environment
             <select name="environmentId" disabled={!projectId}>
               <option value="">No environment</option>
-              {environments.map((environment) => <option key={environment.id} value={environment.id}>{environment.name} — {environment.baseUrl}</option>)}
+              {environments.map((environment) => (
+                <option key={environment.id} value={environment.id}>
+                  {environment.name} — {environment.baseUrl}
+                </option>
+              ))}
             </select>
           </label>
           <button className="button secondary" disabled={!projectId}>
@@ -622,11 +761,19 @@ export default function Workspace() {
               </label>
               <label>
                 Request headers (JSON)
-                <textarea name="headers" placeholder={'Optional, e.g. {"content-type":"application/json"}'} />
+                <textarea
+                  name="headers"
+                  placeholder={
+                    'Optional, e.g. {"content-type":"application/json"}'
+                  }
+                />
               </label>
               <label>
                 Request body
-                <textarea name="body" placeholder={'Optional JSON/text body, e.g. {"name":"Ada"}'} />
+                <textarea
+                  name="body"
+                  placeholder={'Optional JSON/text body, e.g. {"name":"Ada"}'}
+                />
               </label>
               <label>
                 Maximum response time (ms)
@@ -854,11 +1001,15 @@ export default function Workspace() {
             </label>
             <label>
               Collection name
-              <input name="name" placeholder={`${reference.title} smoke tests`} />
+              <input
+                name="name"
+                placeholder={`${reference.title} smoke tests`}
+              />
             </label>
             <p className="muted">
-              Creates GET smoke tests without path parameters. POST/PUT/PATCH/DELETE
-              and paths such as <code>/users/&#123;id&#125;</code> are skipped.
+              Creates GET smoke tests without path parameters.
+              POST/PUT/PATCH/DELETE and paths such as{" "}
+              <code>/users/&#123;id&#125;</code> are skipped.
             </p>
             <button className="button secondary" disabled={busy}>
               {busy ? "Creating…" : "Create smoke tests from OpenAPI"}
