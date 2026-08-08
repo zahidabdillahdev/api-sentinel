@@ -374,6 +374,8 @@ export default function Workspace() {
       const form = new FormData(event.currentTarget);
       const optional = (name: string) =>
         String(form.get(name) ?? "").trim() || undefined;
+      const headers = optional("headers");
+      if (headers) JSON.parse(headers);
       await request(`/collections/${collectionId}/requests`, token, {
         method: "POST",
         body: JSON.stringify({
@@ -388,6 +390,8 @@ export default function Workspace() {
           maxDurationMs: optional("maxDurationMs")
             ? Number(optional("maxDurationMs"))
             : undefined,
+          headers: headers ? JSON.parse(headers) : undefined,
+          body: optional("body"),
         }),
       });
       await loadCollections(token, projectId);
@@ -586,6 +590,14 @@ export default function Workspace() {
                   max="599"
                   required
                 />
+              </label>
+              <label>
+                Request headers (JSON)
+                <textarea name="headers" placeholder={'Optional, e.g. {"content-type":"application/json"}'} />
+              </label>
+              <label>
+                Request body
+                <textarea name="body" placeholder={'Optional JSON/text body, e.g. {"name":"Ada"}'} />
               </label>
               <label>
                 Maximum response time (ms)
