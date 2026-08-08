@@ -43,6 +43,8 @@ Collections run public HTTP requests and can assert:
 
 JSON expected values must be valid JSON literals: use `"healthy"`, `true`, `42`, or `{ "key": "value" }`. Header and JSON checks require both of their corresponding fields. Each run records the status, duration, pass/fail state, and a readable failure reason.
 
+The workspace keeps the ten most recent executions for the selected collection. Expand an entry to inspect every request result, including its status code, duration, and assertion failure message.
+
 The runner blocks localhost, private-network, link-local, and cloud-metadata targets, disallows redirects, and enforces a ten-second timeout.
 
 HTTPS is required by default. Developer teams can explicitly support public HTTP staging or mock targets by setting the following environment variable:

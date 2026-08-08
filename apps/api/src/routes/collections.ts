@@ -6,6 +6,7 @@ import { assertSafeTarget } from '../lib/safe-url.js';
 
 const projectParams = z.object({ projectId: z.string().cuid() });
 const collectionParams = z.object({ collectionId: z.string().cuid() });
+const historyQuery = z.object({ limit: z.coerce.number().int().min(1).max(50).default(10) });
 const collectionBody = z.object({ name: z.string().min(2).max(100) });
 const requestBody = z.object({
   name: z.string().min(2).max(100), method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']), url: z.string().url(), expectedStatus: z.number().int().min(100).max(599),
@@ -37,6 +38,14 @@ export const collectionRoutes: FastifyPluginAsync = async (app) => {
     const { collectionId } = collectionParams.parse(request.params); await collectionForUser(app, authenticatedUserId(request), collectionId, 'MEMBER'); const body = requestBody.parse(request.body); await assertSafeTarget(body.url);
     const { expectedStatus, ...requestData } = body;
     return reply.code(201).send(await app.prisma.testRequest.create({ data: { ...requestData, collectionId, assertions: { create: { expectedStatus } } }, include: { assertions: true } }));
+  });
+  app.get('/collections/:collectionId/runs', { preHandler: app.authenticate }, async (request) => {
+    const { collectionId } = collectionParams.parse(request.params); const { limit } = historyQuery.parse(request.query);
+    await collectionForUser(app, authenticatedUserId(request), collectionId);
+    return app.prisma.executionRun.findMany({
+      where: { collectionId }, take: limit, orderBy: { createdAt: 'desc' },
+      include: { results: { include: { testRequest: { select: { name: true, method: true, url: true } } } } },
+    });
   });
   app.post('/collections/:collectionId/runs', { preHandler: app.authenticate }, async (request, reply) => {
     const { collectionId } = collectionParams.parse(request.params); await collectionForUser(app, authenticatedUserId(request), collectionId, 'MEMBER');
