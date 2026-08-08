@@ -2,10 +2,11 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { AppError, notFound } from '../lib/errors.js';
 import { toSlug } from '../lib/slug.js';
-import { authenticatedUserId, requireOrganizationRole } from '../lib/authorization.js';
+import { authenticatedUserId, requireOrganizationRole, requireProjectRole } from '../lib/authorization.js';
 
 const createOrganization = z.object({ name: z.string().min(2).max(100) });
 const createProject = z.object({ name: z.string().min(2).max(100), slug: z.string().regex(/^[a-z0-9-]+$/).min(2).max(64).optional() });
+const createEnvironment = z.object({ name: z.string().min(2).max(100), baseUrl: z.string().url() });
 
 export const projectRoutes: FastifyPluginAsync = async (app) => {
   app.get('/organizations', { preHandler: app.authenticate }, async (request) => {
@@ -45,5 +46,19 @@ export const projectRoutes: FastifyPluginAsync = async (app) => {
       if ((error as { code?: string }).code === 'P2002') throw new AppError('A project with this slug already exists', 409, 'PROJECT_SLUG_TAKEN');
       throw error;
     }
+  });
+
+  app.get('/projects/:projectId/environments', { preHandler: app.authenticate }, async (request) => {
+    const { projectId } = z.object({ projectId: z.string().cuid() }).parse(request.params);
+    await requireProjectRole(app, authenticatedUserId(request), projectId);
+    return app.prisma.environment.findMany({ where: { projectId }, orderBy: { createdAt: 'desc' } });
+  });
+
+  app.post('/projects/:projectId/environments', { preHandler: app.authenticate }, async (request, reply) => {
+    const { projectId } = z.object({ projectId: z.string().cuid() }).parse(request.params);
+    await requireProjectRole(app, authenticatedUserId(request), projectId, 'MEMBER');
+    const body = createEnvironment.parse(request.body);
+    try { return reply.code(201).send(await app.prisma.environment.create({ data: { projectId, ...body } })); }
+    catch (error: unknown) { if ((error as { code?: string }).code === 'P2002') throw new AppError('An environment with this name already exists', 409, 'ENVIRONMENT_NAME_TAKEN'); throw error; }
   });
 };

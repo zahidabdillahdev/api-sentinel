@@ -106,7 +106,18 @@ model Project {
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   specifications Specification[]
   collections    Collection[]
+  environments   Environment[]
   @@unique([organizationId, slug])
+}
+
+model Environment {
+  id        String   @id @default(cuid())
+  projectId String
+  name      String
+  baseUrl   String
+  createdAt DateTime @default(now())
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  @@unique([projectId, name])
 }
 
 model Collection {
@@ -125,6 +136,8 @@ model TestRequest {
   name         String
   method       HttpMethod
   url          String
+  headers      Json?
+  body         String?
   expectedHeaderName  String?
   expectedHeaderValue String?
   jsonPath     String?
