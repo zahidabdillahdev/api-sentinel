@@ -32,6 +32,18 @@ curl http://localhost:3001/v1/organizations \
 
 Sessions expire after seven days. The database stores only a SHA-256 digest of each session token; passwords are salted and hashed with scrypt. All organization, project, and specification routes enforce membership roles on the server.
 
+## Test collections and target safety
+
+Collections run public HTTP requests and assert expected status codes. The runner blocks localhost, private-network, link-local, and cloud-metadata targets, disallows redirects, and enforces a ten-second timeout.
+
+HTTPS is required by default. Developer teams can explicitly support public HTTP staging or mock targets by setting the following environment variable:
+
+```bash
+ALLOW_INSECURE_HTTP_TARGETS=true
+```
+
+Only enable this for targets you trust. HTTP is unencrypted, so it must not be used with production credentials, secrets, or sensitive response data. The restriction against private networks remains active even when HTTP is enabled.
+
 ## Production containers
 
 ```bash
@@ -42,7 +54,7 @@ docker compose up -d api
 curl http://localhost:3001/v1/health
 ```
 
-PostgreSQL and Redis are available only inside the Compose network. Put a TLS reverse proxy in front of port `3001` before using production credentials over a public network.
+PostgreSQL and Redis are available only inside the Compose network. Put a TLS reverse proxy in front of ports `3000` and `3001` before using production credentials over a public network. Set `ALLOW_INSECURE_HTTP_TARGETS=false` in production unless a public HTTP target is an explicit requirement.
 
 The API starts at `http://localhost:3001`. Its interactive API documentation is at `/documentation`.
 
