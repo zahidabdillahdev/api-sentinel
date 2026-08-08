@@ -2,7 +2,7 @@
 
 ## Implementation status — 2026-08-09
 
-API Sentinel is currently an **MVP in active development**, deployed as a Next.js dashboard and Fastify API backed by PostgreSQL and Redis. The API runner is synchronous inside the API process; the worker/queue architecture below remains the production target, not a completed capability.
+API Sentinel is currently an **MVP in active development**, deployed as a Next.js dashboard, Fastify API, and BullMQ worker backed by PostgreSQL and Redis.
 
 | Area | Status | Delivered behaviour |
 | --- | --- | --- |
@@ -10,16 +10,15 @@ API Sentinel is currently an **MVP in active development**, deployed as a Next.j
 | OpenAPI workspace | Delivered | OpenAPI 3.x JSON import, immutable versions, API reference, version diff. |
 | Manual API checks | Delivered | Collections, environments, encrypted secrets, configurable request payloads, assertions, and run history. |
 | OpenAPI smoke generation | Delivered | Generate safe `GET` requests without path parameters from a reference. |
-| Automation | Planned | Scheduled runs, retries, alerts, and a background worker. |
+| Automation | In progress | Durable queued worker execution and retries delivered; schedules and alerts planned. |
 | CI distribution | Planned | CLI, GitHub Action, and machine-readable reports. |
 
 ### Next engineering sequence
 
-1. Add request headers, JSON bodies, environments, and encrypted secret references.
-2. Move collection execution to a dedicated BullMQ worker with durable `QUEUED`/`RUNNING` states.
-3. Add schedules, retry policy, notification rules, and webhook delivery.
-4. Add per-project overview metrics, pagination, retention, and audit events.
-5. Complete HTTPS/custom-domain deployment and expand integration/end-to-end coverage.
+1. Add schedules, execution locking, notification rules, and webhook delivery.
+2. Add per-project overview metrics, pagination, retention, and audit events.
+3. Ship a CI-friendly CLI and GitHub Actions example.
+4. Complete HTTPS/custom-domain deployment and expand integration/end-to-end coverage.
 
 ## Product goal
 
@@ -74,10 +73,10 @@ API Sentinel is a team workspace for importing OpenAPI specifications, running A
 
 **Exit condition:** a project has versioned, browsable API documentation with clear import failures.
 
-### M2 — Test execution — in progress
+### M2 — Test execution — substantially delivered
 
 - Create collection, request, environment, and assertion models.
-- Build a safe worker-based HTTP test runner with timeouts and redacted secrets. The current synchronous runner is a temporary MVP implementation.
+- Build a safe worker-based HTTP test runner with timeouts, retries, and redacted secrets.
 - Support status, header, JSON-path, and response-time assertions.
 - Display individual test and aggregate run results.
 

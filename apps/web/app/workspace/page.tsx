@@ -63,6 +63,7 @@ type Run = {
   id: string;
   status: string;
   createdAt: string;
+  error?: string | null;
   results: Array<{
     id: string;
     statusCode: number | null;
@@ -489,6 +490,16 @@ export default function Workspace() {
         { method: "POST" },
       );
       setRun(createdRun);
+      let completedRun = createdRun;
+      for (
+        let attempt = 0;
+        attempt < 30 && ["QUEUED", "RUNNING"].includes(completedRun.status);
+        attempt += 1
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+        completedRun = await request<Run>(`/runs/${createdRun.id}`, token);
+        setRun(completedRun);
+      }
       await loadHistory(token, collectionId);
     } catch (error) {
       setMessage(
@@ -833,6 +844,7 @@ export default function Workspace() {
           <div>
             <p>
               <strong>{run.status}</strong>
+              {run.error && <small className="muted"> — {run.error}</small>}
             </p>
             {run.results.map((result) => (
               <p key={result.id}>

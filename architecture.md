@@ -2,12 +2,12 @@
 
 ## Current implementation versus target architecture
 
-The repository currently runs three Compose services: `web` (Next.js), `api` (Fastify), and private `postgres`/`redis` dependencies. The dashboard calls the API directly. Collection execution is intentionally synchronous in the API service for the MVP; it has a ten-second timeout, redirects disabled, public-target validation, and persisted run results. It must move to a worker before scheduled or high-volume usage.
+The repository currently runs `web` (Next.js), `api` (Fastify), and a separately scalable BullMQ `worker`, with private PostgreSQL and Redis dependencies. The API authorizes and queues runs; only the worker executes user-configured target requests.
 
 | Capability | Current implementation | Target production design |
 | --- | --- | --- |
-| Execution | Fastify request handler | BullMQ worker, queue isolation, retries, cancellation |
-| State | `ExecutionRun` written after request work | Durable queued/running/terminal state machine |
+| Execution | BullMQ worker with queue isolation and retries | Cancellation, quotas, and workload classes |
+| State | Durable `QUEUED`/`RUNNING`/terminal state machine | Heartbeats and stale-run recovery |
 | Secrets | AES-256-GCM environment secrets using a deployment key | Managed-key envelope encryption and rotation |
 | Storage | PostgreSQL documents and results | PostgreSQL plus object storage for bounded artifacts |
 | Notifications | Not supported yet | Webhook/email delivery with retries and audit trail |
@@ -16,7 +16,8 @@ The repository currently runs three Compose services: `web` (Next.js), `api` (Fa
 
 ```text
 Browser → Next.js dashboard → Fastify API → PostgreSQL
-                                  └──────→ public target API (temporary runner)
+                                  │
+                                  └→ Redis queue → Worker → public target API
 ```
 
 The API rejects loopback, private, link-local, and cloud-metadata targets. HTTPS is required by default; public HTTP is an explicit environment-level development/staging exception and never permits private-network targets.

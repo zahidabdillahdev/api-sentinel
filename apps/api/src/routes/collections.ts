@@ -4,13 +4,12 @@ import {
   authenticatedUserId,
   requireProjectRole,
 } from "../lib/authorization.js";
-import { notFound } from "../lib/errors.js";
+import { AppError, notFound } from "../lib/errors.js";
 import { assertSafeTarget } from "../lib/safe-url.js";
-import { redactSecrets, resolveVariables } from "../lib/variables.js";
-import { decrypt } from "../lib/encryption.js";
 
 const projectParams = z.object({ projectId: z.string().cuid() });
 const collectionParams = z.object({ collectionId: z.string().cuid() });
+const runParams = z.object({ runId: z.string().cuid() });
 const historyQuery = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(10),
 });
@@ -93,6 +92,20 @@ async function collectionForUser(
   if (!collection) throw notFound("Collection");
   await requireProjectRole(app, userId, collection.project.id, role);
   return collection;
+}
+
+async function runForUser(
+  app: Parameters<FastifyPluginAsync>[0],
+  userId: string,
+  runId: string,
+) {
+  const run = await app.prisma.executionRun.findUnique({
+    where: { id: runId },
+    include: { collection: { select: { projectId: true } } },
+  });
+  if (!run) throw notFound("Execution run");
+  await requireProjectRole(app, userId, run.collection.projectId);
+  return run;
 }
 
 export const collectionRoutes: FastifyPluginAsync = async (app) => {
@@ -193,134 +206,60 @@ export const collectionRoutes: FastifyPluginAsync = async (app) => {
         collectionId,
         "MEMBER",
       );
-      const collection = await app.prisma.collection.findUnique({
-        where: { id: collectionId },
-        include: {
-          environment: { include: { secrets: true } },
-          requests: { include: { assertions: true } },
-        },
+      if (
+        (await app.prisma.testRequest.count({ where: { collectionId } })) === 0
+      )
+        throw new AppError(
+          "Collection has no requests",
+          422,
+          "EMPTY_COLLECTION",
+        );
+      const run = await app.prisma.executionRun.create({
+        data: { collectionId, status: "QUEUED" },
       });
-      if (!collection) throw notFound("Collection");
-      const results = await Promise.all(
-        collection.requests.map(async (testRequest) => {
-          const started = Date.now();
-          let secretValues: string[] = [];
-          try {
-            const secrets = Object.fromEntries(
-              (collection.environment?.secrets ?? []).map((secret) => [
-                secret.name,
-                decrypt(secret),
-              ]),
-            );
-            secretValues = Object.values(secrets);
-            const variables = {
-              baseUrl: collection.environment?.baseUrl.replace(/\/$/, "") ?? "",
-              ...secrets,
-            };
-            const url = resolveVariables(testRequest.url, variables);
-            if (!url.startsWith("http"))
-              throw new Error(
-                "Request requires an environment with a base URL",
-              );
-            await assertSafeTarget(url);
-            const headers = Object.fromEntries(
-              Object.entries(
-                (testRequest.headers as Record<string, string>) ?? {},
-              ).map(([key, value]) => [
-                key,
-                resolveVariables(value, variables),
-              ]),
-            );
-            const response = await fetch(url, {
-              method: testRequest.method,
-              headers,
-              body: testRequest.body
-                ? resolveVariables(testRequest.body, variables)
-                : undefined,
-              redirect: "error",
-              signal: AbortSignal.timeout(10_000),
-            });
-            const durationMs = Date.now() - started;
-            const failures: string[] = [];
-            if (
-              !testRequest.assertions.every(
-                (assertion) => assertion.expectedStatus === response.status,
-              )
-            )
-              failures.push(
-                `Expected status ${testRequest.assertions.map((a) => a.expectedStatus).join(", ")}, received ${response.status}`,
-              );
-            if (
-              testRequest.expectedHeaderName &&
-              response.headers.get(testRequest.expectedHeaderName) !==
-                testRequest.expectedHeaderValue
-            )
-              failures.push(
-                `Header ${testRequest.expectedHeaderName} did not match`,
-              );
-            if (
-              testRequest.maxDurationMs &&
-              durationMs > testRequest.maxDurationMs
-            )
-              failures.push(
-                `Expected response under ${testRequest.maxDurationMs}ms, received ${durationMs}ms`,
-              );
-            if (testRequest.jsonPath) {
-              const payload = (await response.json().catch(() => undefined)) as
-                | Record<string, unknown>
-                | undefined;
-              const actual = testRequest.jsonPath
-                .slice(2)
-                .split(".")
-                .reduce<unknown>(
-                  (value, key) =>
-                    value && typeof value === "object"
-                      ? (value as Record<string, unknown>)[key]
-                      : undefined,
-                  payload,
-                );
-              if (JSON.stringify(actual) !== testRequest.expectedJsonValue)
-                failures.push(
-                  `JSON path ${testRequest.jsonPath} did not match`,
-                );
-            }
-            return {
-              testRequestId: testRequest.id,
-              statusCode: response.status,
-              durationMs,
-              passed: failures.length === 0,
-              error: failures.join("; ") || undefined,
-            };
-          } catch (error) {
-            return {
-              testRequestId: testRequest.id,
-              durationMs: Date.now() - started,
-              passed: false,
-              error: redactSecrets(
-                error instanceof Error ? error.message : "Request failed",
-                secretValues,
-              ),
-            };
-          }
-        }),
-      );
-      const status = results.every((result) => result.passed)
-        ? "PASSED"
-        : "FAILED";
-      return reply.code(201).send(
-        await app.prisma.executionRun.create({
-          data: { collectionId, status, results: { create: results } },
-          include: {
-            results: {
-              include: {
-                testRequest: {
-                  select: { name: true, method: true, url: true },
-                },
-              },
-            },
+      try {
+        await app.runQueue.add(
+          "execute",
+          { runId: run.id },
+          {
+            jobId: run.id,
+            attempts: 3,
+            backoff: { type: "exponential", delay: 1_000 },
+            removeOnComplete: 1_000,
+            removeOnFail: 1_000,
           },
-        }),
-      );
+        );
+      } catch {
+        await app.prisma.executionRun.update({
+          where: { id: run.id },
+          data: {
+            status: "FAILED",
+            finishedAt: new Date(),
+            error: "Unable to enqueue execution",
+          },
+        });
+        throw new AppError(
+          "Unable to enqueue collection run",
+          503,
+          "QUEUE_UNAVAILABLE",
+        );
+      }
+      return reply.code(202).send({ ...run, results: [] });
     },
   );
+
+  app.get("/runs/:runId", { preHandler: app.authenticate }, async (request) => {
+    const { runId } = runParams.parse(request.params);
+    await runForUser(app, authenticatedUserId(request), runId);
+    return app.prisma.executionRun.findUnique({
+      where: { id: runId },
+      include: {
+        results: {
+          include: {
+            testRequest: { select: { name: true, method: true, url: true } },
+          },
+        },
+      },
+    });
+  });
 };

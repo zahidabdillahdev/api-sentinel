@@ -21,12 +21,23 @@ services:
       timeout: 5s
       retries: 10
   api:
+    image: agentrail-api
     build:
       context: .
       dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     env_file: .env
     ports: ["3001:3001"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+  worker:
+    image: agentrail-api
+    command: ["node", "dist/worker.js"]
+    restart: unless-stopped
+    env_file: .env
     depends_on:
       postgres:
         condition: service_healthy

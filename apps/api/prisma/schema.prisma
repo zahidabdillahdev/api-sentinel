@@ -34,28 +34,30 @@ enum HttpMethod {
 }
 
 enum RunStatus {
+  QUEUED
+  RUNNING
   PASSED
   FAILED
 }
 
 model Organization {
-  id        String       @id @default(cuid())
-  name      String
-  slug      String       @unique
-  createdAt DateTime     @default(now())
-  members   Membership[]
-  projects  Project[]
+  id          String       @id @default(cuid())
+  name        String
+  slug        String       @unique
+  createdAt   DateTime     @default(now())
+  members     Membership[]
+  projects    Project[]
   invitations Invitation[]
 }
 
 model User {
-  id        String       @id @default(cuid())
-  email     String       @unique
-  name      String?
-  passwordHash String?
-  createdAt DateTime     @default(now())
-  memberships Membership[]
-  sessions  Session[]
+  id              String       @id @default(cuid())
+  email           String       @unique
+  name            String?
+  passwordHash    String?
+  createdAt       DateTime     @default(now())
+  memberships     Membership[]
+  sessions        Session[]
   invitationsSent Invitation[] @relation("InvitationSender")
 }
 
@@ -72,28 +74,30 @@ model Session {
 }
 
 model Invitation {
-  id String @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String
-  invitedById String
-  email String
-  role ProjectRole @default(MEMBER)
-  tokenHash String @unique
-  expiresAt DateTime
-  acceptedAt DateTime?
-  createdAt DateTime @default(now())
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  invitedBy User @relation("InvitationSender", fields: [invitedById], references: [id], onDelete: Cascade)
+  invitedById    String
+  email          String
+  role           ProjectRole  @default(MEMBER)
+  tokenHash      String       @unique
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy      User         @relation("InvitationSender", fields: [invitedById], references: [id], onDelete: Cascade)
+
   @@unique([organizationId, email])
   @@index([expiresAt])
 }
 
 model Membership {
-  id             String      @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String
   userId         String
-  role           ProjectRole @default(MEMBER)
+  role           ProjectRole  @default(MEMBER)
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@unique([organizationId, userId])
 }
 
@@ -107,62 +111,65 @@ model Project {
   specifications Specification[]
   collections    Collection[]
   environments   Environment[]
+
   @@unique([organizationId, slug])
 }
 
 model Environment {
-  id        String   @id @default(cuid())
-  projectId String
-  name      String
-  baseUrl   String
-  createdAt DateTime @default(now())
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id          String              @id @default(cuid())
+  projectId   String
+  name        String
+  baseUrl     String
+  createdAt   DateTime            @default(now())
+  project     Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   collections Collection[]
-  secrets EnvironmentSecret[]
+  secrets     EnvironmentSecret[]
+
   @@unique([projectId, name])
 }
 
 model EnvironmentSecret {
-  id String @id @default(cuid())
+  id            String      @id @default(cuid())
   environmentId String
-  name String
-  ciphertext String
-  iv String
-  authTag String
-  createdAt DateTime @default(now())
-  environment Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  name          String
+  ciphertext    String
+  iv            String
+  authTag       String
+  createdAt     DateTime    @default(now())
+  environment   Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+
   @@unique([environmentId, name])
 }
 
 model Collection {
-  id        String         @id @default(cuid())
-  projectId String
-  name      String
-  createdAt DateTime       @default(now())
-  project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id            String         @id @default(cuid())
+  projectId     String
+  name          String
+  createdAt     DateTime       @default(now())
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   environmentId String?
-  environment Environment? @relation(fields: [environmentId], references: [id], onDelete: SetNull)
-  requests  TestRequest[]
-  runs      ExecutionRun[]
+  environment   Environment?   @relation(fields: [environmentId], references: [id], onDelete: SetNull)
+  requests      TestRequest[]
+  runs          ExecutionRun[]
 }
 
 model TestRequest {
-  id           String            @id @default(cuid())
-  collectionId String
-  name         String
-  method       HttpMethod
-  url          String
-  headers      Json?
-  body         String?
+  id                  String            @id @default(cuid())
+  collectionId        String
+  name                String
+  method              HttpMethod
+  url                 String
+  headers             Json?
+  body                String?
   expectedHeaderName  String?
   expectedHeaderValue String?
-  jsonPath     String?
-  expectedJsonValue String?
-  maxDurationMs Int?
-  createdAt    DateTime          @default(now())
-  collection   Collection        @relation(fields: [collectionId], references: [id], onDelete: Cascade)
-  assertions   StatusAssertion[]
-  results      RequestResult[]
+  jsonPath            String?
+  expectedJsonValue   String?
+  maxDurationMs       Int?
+  createdAt           DateTime          @default(now())
+  collection          Collection        @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  assertions          StatusAssertion[]
+  results             RequestResult[]
 }
 
 model StatusAssertion {
@@ -177,6 +184,9 @@ model ExecutionRun {
   collectionId String
   status       RunStatus
   createdAt    DateTime        @default(now())
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  error        String?
   collection   Collection      @relation(fields: [collectionId], references: [id], onDelete: Cascade)
   results      RequestResult[]
 }
@@ -213,5 +223,6 @@ model SpecificationVersion {
   apiVersion      String
   createdAt       DateTime            @default(now())
   specification   Specification       @relation(fields: [specificationId], references: [id], onDelete: Cascade)
+
   @@unique([specificationId, version])
 }

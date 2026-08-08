@@ -43,6 +43,8 @@ Collections run public HTTP requests and can assert:
 
 JSON expected values must be valid JSON literals: use `"healthy"`, `true`, `42`, or `{ "key": "value" }`. Header and JSON checks require both of their corresponding fields. Each run records the status, duration, pass/fail state, and a readable failure reason.
 
+Runs are queued through Redis and executed by a dedicated BullMQ worker. The API returns a durable `QUEUED` run immediately, the dashboard polls through `RUNNING`, and the worker persists terminal results. Jobs retry transient worker failures up to three times with exponential backoff.
+
 The workspace keeps the ten most recent executions for the selected collection. Expand an entry to inspect every request result, including its status code, duration, and assertion failure message.
 
 ## Generate smoke tests from OpenAPI
@@ -77,7 +79,7 @@ Only enable this for targets you trust. HTTP is unencrypted, so it must not be u
 docker compose build api
 docker compose up -d postgres redis
 docker compose run --rm api npx prisma migrate deploy
-docker compose up -d api
+docker compose up -d api worker web
 curl http://localhost:3001/v1/health
 ```
 
@@ -91,6 +93,7 @@ The API starts at `http://localhost:3001`. Its interactive API documentation is 
 - OpenAPI 3.0/3.1 validation and immutable version imports
 - Breaking-change reports between specification versions
 - Collection test execution with safe outbound-request controls
+- Durable queued execution in a separately scalable worker
 - Health endpoint and structured error responses
 
 See [plan.md](./plan.md), [architecture.md](./architecture.md), and [design.md](./design.md) for the product blueprint.
