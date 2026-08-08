@@ -1,5 +1,30 @@
 # API Sentinel — Product and UI Design
 
+## Current product surface
+
+The live MVP is intentionally a single workspace page while the information architecture below is the target navigation model. It currently supports account creation, organization/project selection, OpenAPI import/reference/version comparison, collection editing, on-demand runs, assertion feedback, run history, and OpenAPI-generated smoke tests.
+
+### Current first-value workflow
+
+```text
+Create organization/project
+          ↓
+Import OpenAPI 3.x JSON
+          ↓
+Open API reference
+          ↓
+Provide public base URL → generate eligible GET smoke tests
+          ↓
+Run collection → inspect assertion result and history
+```
+
+### Deliberate MVP constraints
+
+- Smoke generation skips write methods and paths containing `{parameters}`.
+- A collection request currently has no custom request headers, body, variables, or credentials.
+- History shows the ten most recent runs in the workspace; pagination and metrics belong to the next dashboard iteration.
+- The UI uses English product labels today; localization should be planned rather than added piecemeal.
+
 ## Product principles
 
 1. **Explain failures, not just statuses.** A red result must say what changed or what assertion failed, where, and what to do next.
@@ -8,7 +33,7 @@
 4. **Progressive disclosure.** Beginners see sensible defaults; advanced options are available without crowding core workflows.
 5. **Developer-native.** Respect familiar concepts: environments, collections, HTTP methods, JSON, diffs, exit codes, and CI.
 
-## Information architecture
+## Target information architecture
 
 ```text
 Organization switcher
@@ -111,4 +136,3 @@ Use a quiet, high-contrast technical interface: neutral surfaces, one blue actio
 2. Responsive high-fidelity screens for the seven key screens above.
 3. A small component library: buttons, inputs, select, modal, table, status badge, alert, tabs, code block, and diff view.
 4. Usability test with at least five developers, measuring time-to-first-import and ability to explain a failed test.
-

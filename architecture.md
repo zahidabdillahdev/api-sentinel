@@ -1,5 +1,26 @@
 # API Sentinel — Architecture
 
+## Current implementation versus target architecture
+
+The repository currently runs three Compose services: `web` (Next.js), `api` (Fastify), and private `postgres`/`redis` dependencies. The dashboard calls the API directly. Collection execution is intentionally synchronous in the API service for the MVP; it has a ten-second timeout, redirects disabled, public-target validation, and persisted run results. It must move to a worker before scheduled or high-volume usage.
+
+| Capability | Current implementation | Target production design |
+| --- | --- | --- |
+| Execution | Fastify request handler | BullMQ worker, queue isolation, retries, cancellation |
+| State | `ExecutionRun` written after request work | Durable queued/running/terminal state machine |
+| Secrets | Not supported yet | Envelope-encrypted environment secret references |
+| Storage | PostgreSQL documents and results | PostgreSQL plus object storage for bounded artifacts |
+| Notifications | Not supported yet | Webhook/email delivery with retries and audit trail |
+
+### Current request path
+
+```text
+Browser → Next.js dashboard → Fastify API → PostgreSQL
+                                  └──────→ public target API (temporary runner)
+```
+
+The API rejects loopback, private, link-local, and cloud-metadata targets. HTTPS is required by default; public HTTP is an explicit environment-level development/staging exception and never permits private-network targets.
+
 ## Technical choices
 
 | Area | Choice | Reason |
@@ -13,7 +34,7 @@
 | Validation | Zod + OpenAPI parser | Runtime validation at the boundary and predictable OpenAPI handling. |
 | Observability | OpenTelemetry + Sentry | Portable traces/metrics plus actionable error monitoring. |
 
-## System context
+## Target system context
 
 ```text
 Browser / CLI
@@ -65,7 +86,7 @@ Important storage rules:
 - Request and response bodies have configurable size and retention limits; sensitive headers and JSON paths are redacted before persistence.
 - Execution data belongs to a project and is always queried through organization-scoped authorization.
 
-## Execution flow
+## Target execution flow
 
 1. A user, schedule, or CLI request asks the API to execute a collection.
 2. The API authorizes access, writes an `ExecutionRun` in `queued` state, and enqueues only its ID.
@@ -98,4 +119,3 @@ The diff engine normalizes two OpenAPI documents into a canonical endpoint and s
 ## Deployment
 
 Use separate containers for web, API, and worker. Deploy preview environments for pull requests, then promote immutable images to staging and production through GitHub Actions. Managed PostgreSQL, managed Redis, encrypted object storage, and a secret manager are required in production.
-

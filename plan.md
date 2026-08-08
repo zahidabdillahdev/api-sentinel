@@ -1,5 +1,26 @@
 # API Sentinel — Delivery Plan
 
+## Implementation status — 2026-08-09
+
+API Sentinel is currently an **MVP in active development**, deployed as a Next.js dashboard and Fastify API backed by PostgreSQL and Redis. The API runner is synchronous inside the API process; the worker/queue architecture below remains the production target, not a completed capability.
+
+| Area | Status | Delivered behaviour |
+| --- | --- | --- |
+| Identity and access | Delivered | Register/login sessions, organization membership, invitations, project-scoped RBAC. |
+| OpenAPI workspace | Delivered | OpenAPI 3.x JSON import, immutable versions, API reference, version diff. |
+| Manual API checks | Delivered | Collections, public-target safety controls, status/header/JSON/duration assertions, run history. |
+| OpenAPI smoke generation | Delivered | Generate safe `GET` requests without path parameters from a reference. |
+| Automation | Planned | Scheduled runs, retries, alerts, and a background worker. |
+| CI distribution | Planned | CLI, GitHub Action, and machine-readable reports. |
+
+### Next engineering sequence
+
+1. Add request headers, JSON bodies, environments, and encrypted secret references.
+2. Move collection execution to a dedicated BullMQ worker with durable `QUEUED`/`RUNNING` states.
+3. Add schedules, retry policy, notification rules, and webhook delivery.
+4. Add per-project overview metrics, pagination, retention, and audit events.
+5. Complete HTTPS/custom-domain deployment and expand integration/end-to-end coverage.
+
 ## Product goal
 
 API Sentinel is a team workspace for importing OpenAPI specifications, running API and contract checks, detecting breaking changes, and tracking API reliability over time. It gives backend engineers, QA, platform teams, and API consumers one reliable view of API quality.
@@ -13,7 +34,7 @@ API Sentinel is a team workspace for importing OpenAPI specifications, running A
 | DevOps / platform engineer | Schedule health checks and receive actionable alerts. |
 | Engineering lead | Understand API reliability, change risk, and ownership. |
 
-## Release 1 scope
+## Release 1 target scope
 
 1. Organization, project, and member management with role-based access control.
 2. OpenAPI 3.x import from file or URL, validation, and version history.
@@ -35,7 +56,7 @@ API Sentinel is a team workspace for importing OpenAPI specifications, running A
 
 ## Milestones
 
-### M0 — Foundation
+### M0 — Foundation — substantially delivered
 
 - Establish TypeScript monorepo, linting, formatting, conventional commits, and CI.
 - Add Docker Compose for PostgreSQL, Redis, API service, and worker.
@@ -44,7 +65,7 @@ API Sentinel is a team workspace for importing OpenAPI specifications, running A
 
 **Exit condition:** a user can sign in, create a project, invite a member, and run the system locally and in a preview environment.
 
-### M1 — Specification workspace
+### M1 — Specification workspace — substantially delivered
 
 - Implement OpenAPI upload and URL import.
 - Validate and normalize OpenAPI 3.x documents.
@@ -53,16 +74,16 @@ API Sentinel is a team workspace for importing OpenAPI specifications, running A
 
 **Exit condition:** a project has versioned, browsable API documentation with clear import failures.
 
-### M2 — Test execution
+### M2 — Test execution — in progress
 
 - Create collection, request, environment, and assertion models.
-- Build a safe worker-based HTTP test runner with timeouts and redacted secrets.
+- Build a safe worker-based HTTP test runner with timeouts and redacted secrets. The current synchronous runner is a temporary MVP implementation.
 - Support status, header, JSON-path, and response-time assertions.
 - Display individual test and aggregate run results.
 
 **Exit condition:** users can execute a saved collection on demand and diagnose a failed assertion.
 
-### M3 — Automation and change safety
+### M3 — Automation and change safety — planned
 
 - Add cron-like schedules with retry policies and execution locking.
 - Compare two specification versions and classify breaking changes.
@@ -71,7 +92,7 @@ API Sentinel is a team workspace for importing OpenAPI specifications, running A
 
 **Exit condition:** a team can block a pull request or deployment on contract-test failure or a breaking API change.
 
-### M4 — Production hardening
+### M4 — Production hardening — planned
 
 - Add audit logging, rate limiting, request quotas, and retention jobs.
 - Instrument API, worker, and external HTTP calls with OpenTelemetry.
@@ -115,4 +136,3 @@ docs/
 - A saved collection runs within 30 seconds for normal test sizes.
 - Breaking-change detection produces an explainable result with endpoint and field context.
 - Failed scheduled checks notify the configured channel within five minutes.
-
