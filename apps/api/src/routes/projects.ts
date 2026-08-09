@@ -20,7 +20,7 @@ const createProject = z.object({
     .optional(),
 });
 const createEnvironment = z.object({
-  name: z.string().min(2).max(100),
+  name: z.string().trim().min(2).max(100),
   baseUrl: z.string().url(),
 });
 const createSecret = z.object({
@@ -83,6 +83,41 @@ export const projectRoutes: FastifyPluginAsync = async (app) => {
         where: { organizationId },
         orderBy: { createdAt: "desc" },
       });
+    },
+  );
+
+  app.patch(
+    "/environments/:environmentId",
+    { preHandler: app.authenticate },
+    async (request) => {
+      const { environmentId } = z
+        .object({ environmentId: z.string().cuid() })
+        .parse(request.params);
+      const environment = await app.prisma.environment.findUnique({
+        where: { id: environmentId },
+      });
+      if (!environment) throw notFound("Environment");
+      await requireProjectRole(
+        app,
+        authenticatedUserId(request),
+        environment.projectId,
+        "MEMBER",
+      );
+      const body = createEnvironment.parse(request.body);
+      try {
+        return await app.prisma.environment.update({
+          where: { id: environmentId },
+          data: body,
+        });
+      } catch (error: unknown) {
+        if ((error as { code?: string }).code === "P2002")
+          throw new AppError(
+            "An environment with this name already exists",
+            409,
+            "ENVIRONMENT_NAME_TAKEN",
+          );
+        throw error;
+      }
     },
   );
 

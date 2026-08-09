@@ -135,6 +135,10 @@ The manually triggered example at [`.github/workflows/api-sentinel-example.yml`]
 
 Each project environment can store write-only secrets such as `token` or `apiKey`. Reference them in request headers or bodies with `{{token}}`. Values are encrypted with AES-256-GCM before persistence, are never returned by read endpoints, are decrypted only during execution, and are redacted from stored execution errors.
 
+Environment names and base URLs can be edited from the workspace. Collections
+linked to that environment automatically use its updated base URL; secrets and
+historical run records remain attached to their existing environment and runs.
+
 Production requires a unique 32-byte encryption key encoded as 64 hexadecimal characters:
 
 ```bash

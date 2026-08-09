@@ -13,6 +13,11 @@ type Organization = {
 type Project = { id: string; name: string };
 type Environment = { id: string; name: string; baseUrl: string };
 type EnvironmentSecret = { id: string; name: string; createdAt: string };
+const OPENAPI_EXAMPLE = `{
+  "openapi": "3.0.3",
+  "info": { "title": "Pet API", "version": "1.0.0" },
+  "paths": {}
+}`;
 type Specification = {
   id: string;
   name: string;
@@ -158,6 +163,7 @@ export default function Workspace() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [environments, setEnvironments] = useState<Environment[]>([]);
+  const [editingEnvironmentId, setEditingEnvironmentId] = useState("");
   const [secretEnvironmentId, setSecretEnvironmentId] = useState("");
   const [secrets, setSecrets] = useState<EnvironmentSecret[]>([]);
   const [specifications, setSpecifications] = useState<Specification[]>([]);
@@ -182,9 +188,7 @@ export default function Workspace() {
   const [projectId, setProjectId] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const [document, setDocument] = useState(
-    '{\n  "openapi": "3.0.3",\n  "info": { "title": "Pet API", "version": "1.0.0" },\n  "paths": {}\n}',
-  );
+  const [document, setDocument] = useState("");
   async function load(activeToken: string) {
     const items = await request<Organization[]>("/organizations", activeToken);
     setOrganizations(items);
@@ -452,6 +456,30 @@ export default function Workspace() {
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Unable to create environment",
+      );
+    }
+  }
+  async function updateEnvironment(
+    event: FormEvent<HTMLFormElement>,
+    environmentId: string,
+  ) {
+    event.preventDefault();
+    if (!token || !projectId) return;
+    try {
+      const form = new FormData(event.currentTarget);
+      await request(`/environments/${environmentId}`, token, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: form.get("name"),
+          baseUrl: form.get("baseUrl"),
+        }),
+      });
+      await loadEnvironments(token, projectId);
+      setEditingEnvironmentId("");
+      setMessage("Environment updated successfully.");
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Unable to update environment",
       );
     }
   }
@@ -999,12 +1027,53 @@ export default function Workspace() {
             Create environment
           </button>
         </form>
-        {environments.map((environment) => (
-          <p key={environment.id}>
-            <strong>{environment.name}</strong>{" "}
-            <code>{environment.baseUrl}</code>
-          </p>
-        ))}
+        {environments.map((environment) =>
+          editingEnvironmentId === environment.id ? (
+            <form
+              key={environment.id}
+              className="environment-editor"
+              onSubmit={(event) => updateEnvironment(event, environment.id)}
+            >
+              <label>
+                Environment name
+                <input name="name" defaultValue={environment.name} required />
+              </label>
+              <label>
+                Base URL
+                <input
+                  name="baseUrl"
+                  type="url"
+                  defaultValue={environment.baseUrl}
+                  required
+                />
+              </label>
+              <div className="button-row">
+                <button className="button secondary">Save changes</button>
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => setEditingEnvironmentId("")}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="environment-row" key={environment.id}>
+              <p>
+                <strong>{environment.name}</strong>{" "}
+                <code>{environment.baseUrl}</code>
+              </p>
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => setEditingEnvironmentId(environment.id)}
+              >
+                Edit
+              </button>
+            </div>
+          ),
+        )}
         {environments.length > 0 && (
           <form onSubmit={saveSecret}>
             <label>
@@ -1098,7 +1167,7 @@ export default function Workspace() {
             <form onSubmit={addRequest}>
               <label>
                 Request name
-                <input name="name" defaultValue="Health check" required />
+                <input name="name" placeholder="Health check" required />
               </label>
               <label>
                 Method
@@ -1115,7 +1184,7 @@ export default function Workspace() {
                 <input
                   name="url"
                   type="url"
-                  defaultValue="https://httpbin.org/status/200"
+                  placeholder="https://api.example.com/health"
                   required
                 />
               </label>
@@ -1366,13 +1435,15 @@ export default function Workspace() {
         <form onSubmit={importSpec}>
           <label>
             Specification name
-            <input name="name" defaultValue="Pet API" required />
+            <input name="name" placeholder="Pet API" required />
           </label>
           <label>
             OpenAPI JSON
             <textarea
               value={document}
               onChange={(e) => setDocument(e.target.value)}
+              placeholder={OPENAPI_EXAMPLE}
+              required
             />
           </label>
           <button className="button" disabled={busy || !projectId}>

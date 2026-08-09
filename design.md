@@ -24,6 +24,7 @@ Run collection → inspect assertion result and history
 
 - Smoke generation skips write methods and paths containing `{parameters}`.
 - A collection supports custom headers/body plus write-only environment secrets; a richer request composer and managed-key rotation UX remain planned.
+- Environment names and base URLs are editable in place; example form content is presented as placeholder guidance so demo values are never saved accidentally.
 - History shows the ten most recent runs in the workspace; pagination and metrics belong to the next dashboard iteration.
 - Collections support cron schedules with IANA timezones and explicit active/paused states.
 - Collection failure webhooks show only the endpoint origin, keep URL/signing secret write-only, and expose the ten latest delivery attempts for diagnosis.
