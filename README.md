@@ -81,6 +81,12 @@ The workspace keeps the ten most recent executions for the selected collection. 
 
 The project overview aggregates the last 24 hours of runs into pass rate, passed/failed/active counts, average request duration, and active schedule totals. It also shows the five most recent runs across every collection. Collection history uses cursor pagination: select **Load older runs** to fetch the next ten without reloading or duplicating previous results.
 
+### Retention and audit trail
+
+Project administrators can retain completed runs for 7, 30, 90, 180, or 365 days. A BullMQ maintenance job runs every day at 03:00 UTC with exponential retries. It deletes only terminal `PASSED` and `FAILED` runs whose `finishedAt` timestamp is older than the project cutoff; queued/running executions and configuration records are preserved.
+
+The governance panel exposes an append-only audit feed for retention, schedule, and webhook configuration changes. Events record the actor, action, target, timestamp, and non-sensitive context. Full webhook URLs, signing secrets, and environment secret values are never written to audit metadata.
+
 ## Generate smoke tests from OpenAPI
 
 Open a specification reference in the workspace, provide its public API base URL, then select **Create smoke tests from OpenAPI**. API Sentinel creates one request for every eligible `GET` endpoint and derives its expected successful status code from the specification. To avoid accidental writes or incomplete URLs, `POST`, `PUT`, `PATCH`, `DELETE`, and paths containing parameters such as `/users/{id}` are skipped.
@@ -131,6 +137,7 @@ The API starts at `http://localhost:3001`. Its interactive API documentation is 
 - Cron-based collection schedules with timezone and overlap protection
 - Encrypted, signed failure webhooks with retry history
 - Project reliability metrics and cursor-paginated run history
+- Configurable run retention and project-scoped audit events
 - Health endpoint and structured error responses
 
 See [plan.md](./plan.md), [architecture.md](./architecture.md), and [design.md](./design.md) for the product blueprint.

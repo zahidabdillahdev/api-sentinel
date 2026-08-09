@@ -18,6 +18,8 @@ Notification rules belong to a collection. The worker evaluates enabled rules af
 
 Project overview metrics are computed from PostgreSQL on demand with project-scoped relation filters. Run history uses stable execution IDs as cursors, validates that every cursor belongs to the authorized collection, and keeps payload size bounded with a maximum page size of 50.
 
+An idempotent BullMQ Job Scheduler triggers retention cleanup daily. Each project has an allow-listed retention period; cleanup filters by project, terminal status, and `finishedAt` cutoff so active jobs cannot be removed. Configuration changes write project-scoped audit events through a single helper, and read pagination validates cursor ownership.
+
 ### Current request path
 
 ```text
@@ -79,6 +81,7 @@ The API service owns authentication, authorization, configuration, and synchrono
 Organization 1---* Membership *---1 User
 Organization 1---* Project
 Project      1---* Environment
+Project      1---* AuditEvent *---0..1 User
 Project      1---* Specification 1---* SpecificationVersion
 Project      1---* Collection 1---* TestRequest 1---* Assertion
 Collection   1---* Schedule
@@ -93,6 +96,7 @@ Important storage rules:
 - Secrets are encrypted before persistence and never returned in plaintext after creation.
 - Request and response bodies have configurable size and retention limits; sensitive headers and JSON paths are redacted before persistence.
 - Execution data belongs to a project and is always queried through organization-scoped authorization.
+- Audit metadata excludes encrypted values and write-only secret material.
 
 ## Target execution flow
 

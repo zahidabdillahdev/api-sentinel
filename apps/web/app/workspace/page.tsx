@@ -104,6 +104,20 @@ type ProjectOverview = {
   }>;
   generatedAt: string;
 };
+type AuditEvent = {
+  id: string;
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+  actor: { id: string; name: string | null; email: string } | null;
+};
+type Governance = {
+  retentionDays: number;
+  events: AuditEvent[];
+  nextCursor: string | null;
+};
 type Run = {
   id: string;
   status: string;
@@ -158,6 +172,7 @@ export default function Workspace() {
   const [history, setHistory] = useState<Run[]>([]);
   const [historyCursor, setHistoryCursor] = useState<string | null>(null);
   const [overview, setOverview] = useState<ProjectOverview | null>(null);
+  const [governance, setGovernance] = useState<Governance | null>(null);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [notificationRules, setNotificationRules] = useState<
     NotificationRule[]
@@ -255,6 +270,12 @@ export default function Workspace() {
       await request<ProjectOverview>(`/projects/${id}/overview`, activeToken),
     );
   }
+  async function loadGovernance(activeToken: string, id: string) {
+    if (!id) return setGovernance(null);
+    setGovernance(
+      await request<Governance>(`/projects/${id}/governance`, activeToken),
+    );
+  }
   async function loadHistory(
     activeToken: string,
     id: string,
@@ -306,6 +327,9 @@ export default function Workspace() {
   }, [token, projectId]);
   useEffect(() => {
     if (token) void loadOverview(token, projectId);
+  }, [token, projectId]);
+  useEffect(() => {
+    if (token) void loadGovernance(token, projectId);
   }, [token, projectId]);
   useEffect(() => {
     if (token) void loadCollections(token, projectId);
@@ -617,6 +641,7 @@ export default function Workspace() {
       });
       await loadSchedules(token, collectionId);
       await loadOverview(token, projectId);
+      await loadGovernance(token, projectId);
       setMessage("Schedule created. The first run may be queued immediately.");
       event.currentTarget.reset();
     } catch (error) {
@@ -634,6 +659,7 @@ export default function Workspace() {
       });
       await loadSchedules(token, collectionId);
       await loadOverview(token, projectId);
+      await loadGovernance(token, projectId);
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Unable to update schedule",
@@ -655,6 +681,7 @@ export default function Workspace() {
         }),
       });
       await loadNotificationRules(token, collectionId);
+      await loadGovernance(token, projectId);
       setMessage("Webhook alert saved securely.");
       event.currentTarget.reset();
     } catch (error) {
@@ -671,9 +698,29 @@ export default function Workspace() {
         body: JSON.stringify({ enabled: !rule.enabled }),
       });
       await loadNotificationRules(token, collectionId);
+      await loadGovernance(token, projectId);
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Unable to update webhook",
+      );
+    }
+  }
+  async function updateRetention(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !projectId) return;
+    try {
+      const form = new FormData(event.currentTarget);
+      await request(`/projects/${projectId}/retention`, token, {
+        method: "PATCH",
+        body: JSON.stringify({
+          retentionDays: Number(form.get("retentionDays")),
+        }),
+      });
+      await loadGovernance(token, projectId);
+      setMessage("Run retention policy updated.");
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Unable to update retention",
       );
     }
   }
@@ -821,6 +868,45 @@ export default function Workspace() {
                 </p>
               ))}
             </div>
+          )}
+        </section>
+      )}
+      {governance && (
+        <section className="panel">
+          <p className="eyebrow">GOVERNANCE</p>
+          <h2>Retention and audit trail</h2>
+          <form onSubmit={updateRetention}>
+            <label>
+              Keep completed runs for
+              <select
+                name="retentionDays"
+                key={governance.retentionDays}
+                defaultValue={governance.retentionDays}
+              >
+                {[7, 30, 90, 180, 365].map((days) => (
+                  <option key={days} value={days}>
+                    {days} days
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="muted">
+              Cleanup runs daily at 03:00 UTC. Queued and running executions
+              are always preserved.
+            </p>
+            <button className="button secondary">Update retention</button>
+          </form>
+          <h3>Recent configuration activity</h3>
+          {governance.events.length === 0 ? (
+            <p className="muted">No audited changes yet.</p>
+          ) : (
+            governance.events.map((event) => (
+              <p key={event.id}>
+                <strong>{event.action}</strong> ·{" "}
+                {event.actor?.name ?? event.actor?.email ?? "Deleted user"} ·{" "}
+                {new Date(event.createdAt).toLocaleString()}
+              </p>
+            ))
           )}
         </section>
       )}

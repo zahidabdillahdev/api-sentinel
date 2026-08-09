@@ -4,6 +4,7 @@ import { Redis } from "ioredis";
 import { config } from "./config.js";
 import { executeCollectionRun } from "./lib/collection-runner.js";
 import { deliverFailureNotifications } from "./lib/webhook-notifications.js";
+import { cleanupExpiredRuns } from "./lib/retention.js";
 import { COLLECTION_RUN_QUEUE } from "./plugins/queue.js";
 import type { CollectionRunJob } from "./plugins/queue.js";
 
@@ -14,6 +15,11 @@ const connection = new Redis(config.REDIS_URL, {
 const worker = new Worker<CollectionRunJob>(
   COLLECTION_RUN_QUEUE,
   async (job) => {
+    if (job.data.maintenance === "retention") {
+      const result = await cleanupExpiredRuns(prisma);
+      console.info(result, "retention cleanup completed");
+      return;
+    }
     let runId = job.data.runId;
     if (!runId && job.data.scheduleId) {
       const schedule = await prisma.schedule.findUnique({

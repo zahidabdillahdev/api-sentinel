@@ -4,7 +4,11 @@ import { Redis } from "ioredis";
 import { config } from "../config.js";
 
 export const COLLECTION_RUN_QUEUE = "collection-runs";
-export type CollectionRunJob = { runId?: string; scheduleId?: string };
+export type CollectionRunJob = {
+  runId?: string;
+  scheduleId?: string;
+  maintenance?: "retention";
+};
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -18,6 +22,20 @@ export default fp(async (app) => {
     connection,
   });
   app.decorate("runQueue", queue);
+  await queue.upsertJobScheduler(
+    "daily-retention-cleanup",
+    { pattern: "0 0 3 * * *", tz: "UTC" },
+    {
+      name: "retention-cleanup",
+      data: { maintenance: "retention" },
+      opts: {
+        attempts: 3,
+        backoff: { type: "exponential", delay: 5_000 },
+        removeOnComplete: 100,
+        removeOnFail: 100,
+      },
+    },
+  );
   app.addHook("onClose", async () => {
     await queue.close();
     await connection.quit();

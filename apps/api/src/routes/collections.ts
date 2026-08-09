@@ -6,6 +6,7 @@ import {
 } from "../lib/authorization.js";
 import { AppError, notFound } from "../lib/errors.js";
 import { encrypt } from "../lib/encryption.js";
+import { recordAuditEvent } from "../lib/audit.js";
 import { assertSafeTarget } from "../lib/safe-url.js";
 
 const projectParams = z.object({ projectId: z.string().cuid() });
@@ -350,7 +351,7 @@ export const collectionRoutes: FastifyPluginAsync = async (app) => {
     { preHandler: app.authenticate },
     async (request, reply) => {
       const { collectionId } = collectionParams.parse(request.params);
-      await collectionForUser(
+      const collection = await collectionForUser(
         app,
         authenticatedUserId(request),
         collectionId,
@@ -394,6 +395,18 @@ export const collectionRoutes: FastifyPluginAsync = async (app) => {
           "INVALID_SCHEDULE",
         );
       }
+      await recordAuditEvent(app.prisma, {
+        projectId: collection.project.id,
+        actorUserId: authenticatedUserId(request),
+        action: "schedule.created",
+        targetType: "schedule",
+        targetId: schedule.id,
+        metadata: {
+          name: schedule.name,
+          cron: schedule.cron,
+          timezone: schedule.timezone,
+        },
+      });
       return reply.code(201).send(schedule);
     },
   );
@@ -450,6 +463,14 @@ export const collectionRoutes: FastifyPluginAsync = async (app) => {
           data: { enabled: false },
         });
       }
+      await recordAuditEvent(app.prisma, {
+        projectId: schedule.collection.projectId,
+        actorUserId: authenticatedUserId(request),
+        action: enabled ? "schedule.enabled" : "schedule.paused",
+        targetType: "schedule",
+        targetId: scheduleId,
+        metadata: { name: schedule.name },
+      });
       return app.prisma.schedule.findUnique({ where: { id: scheduleId } });
     },
   );
@@ -459,7 +480,7 @@ export const collectionRoutes: FastifyPluginAsync = async (app) => {
     { preHandler: app.authenticate },
     async (request, reply) => {
       const { scheduleId } = scheduleParams.parse(request.params);
-      await scheduleForUser(
+      const schedule = await scheduleForUser(
         app,
         authenticatedUserId(request),
         scheduleId,
@@ -467,6 +488,14 @@ export const collectionRoutes: FastifyPluginAsync = async (app) => {
       );
       await app.runQueue.removeJobScheduler(scheduleId);
       await app.prisma.schedule.delete({ where: { id: scheduleId } });
+      await recordAuditEvent(app.prisma, {
+        projectId: schedule.collection.projectId,
+        actorUserId: authenticatedUserId(request),
+        action: "schedule.deleted",
+        targetType: "schedule",
+        targetId: scheduleId,
+        metadata: { name: schedule.name },
+      });
       return reply.code(204).send();
     },
   );
@@ -511,7 +540,7 @@ export const collectionRoutes: FastifyPluginAsync = async (app) => {
     { preHandler: app.authenticate },
     async (request, reply) => {
       const { collectionId } = collectionParams.parse(request.params);
-      await collectionForUser(
+      const collection = await collectionForUser(
         app,
         authenticatedUserId(request),
         collectionId,
@@ -524,29 +553,36 @@ export const collectionRoutes: FastifyPluginAsync = async (app) => {
         ? encrypt(body.signingSecret)
         : undefined;
       try {
-        return reply.code(201).send(
-          await app.prisma.notificationRule.create({
-            data: {
-              collectionId,
-              name: body.name,
-              endpointOrigin: endpoint.origin,
-              endpointCiphertext: encryptedEndpoint.ciphertext,
-              endpointIv: encryptedEndpoint.iv,
-              endpointAuthTag: encryptedEndpoint.authTag,
-              signingSecretCiphertext: encryptedSecret?.ciphertext,
-              signingSecretIv: encryptedSecret?.iv,
-              signingSecretAuthTag: encryptedSecret?.authTag,
-            },
-            select: {
-              id: true,
-              name: true,
-              endpointOrigin: true,
-              enabled: true,
-              createdAt: true,
-              updatedAt: true,
-            },
-          }),
-        );
+        const rule = await app.prisma.notificationRule.create({
+          data: {
+            collectionId,
+            name: body.name,
+            endpointOrigin: endpoint.origin,
+            endpointCiphertext: encryptedEndpoint.ciphertext,
+            endpointIv: encryptedEndpoint.iv,
+            endpointAuthTag: encryptedEndpoint.authTag,
+            signingSecretCiphertext: encryptedSecret?.ciphertext,
+            signingSecretIv: encryptedSecret?.iv,
+            signingSecretAuthTag: encryptedSecret?.authTag,
+          },
+          select: {
+            id: true,
+            name: true,
+            endpointOrigin: true,
+            enabled: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        });
+        await recordAuditEvent(app.prisma, {
+          projectId: collection.project.id,
+          actorUserId: authenticatedUserId(request),
+          action: "notification-rule.created",
+          targetType: "notification-rule",
+          targetId: rule.id,
+          metadata: { name: rule.name, endpointOrigin: rule.endpointOrigin },
+        });
+        return reply.code(201).send(rule);
       } catch (error) {
         if ((error as { code?: string }).code === "P2002")
           throw new AppError(
@@ -567,13 +603,13 @@ export const collectionRoutes: FastifyPluginAsync = async (app) => {
         request.params,
       );
       const { enabled } = notificationRuleStateBody.parse(request.body);
-      await notificationRuleForUser(
+      const rule = await notificationRuleForUser(
         app,
         authenticatedUserId(request),
         notificationRuleId,
         "MEMBER",
       );
-      return app.prisma.notificationRule.update({
+      const updated = await app.prisma.notificationRule.update({
         where: { id: notificationRuleId },
         data: { enabled },
         select: {
@@ -585,6 +621,17 @@ export const collectionRoutes: FastifyPluginAsync = async (app) => {
           updatedAt: true,
         },
       });
+      await recordAuditEvent(app.prisma, {
+        projectId: rule.collection.projectId,
+        actorUserId: authenticatedUserId(request),
+        action: enabled
+          ? "notification-rule.enabled"
+          : "notification-rule.paused",
+        targetType: "notification-rule",
+        targetId: notificationRuleId,
+        metadata: { name: rule.name },
+      });
+      return updated;
     },
   );
 };
