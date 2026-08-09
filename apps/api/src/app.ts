@@ -12,6 +12,7 @@ import { authRoutes } from "./routes/auth.js";
 import { memberRoutes } from "./routes/members.js";
 import { collectionRoutes } from "./routes/collections.js";
 import { healthRoutes } from "./routes/health.js";
+import { overviewRoutes } from "./routes/overview.js";
 import { projectRoutes } from "./routes/projects.js";
 import { specificationRoutes } from "./routes/specifications.js";
 
@@ -29,6 +30,7 @@ export async function buildApp() {
   await app.register(authPlugin);
   await app.register(queuePlugin);
   await app.register(healthRoutes, { prefix: "/v1" });
+  await app.register(overviewRoutes, { prefix: "/v1" });
   await app.register(authRoutes, { prefix: "/v1" });
   await app.register(memberRoutes, { prefix: "/v1" });
   await app.register(collectionRoutes, { prefix: "/v1" });

@@ -84,6 +84,26 @@ type NotificationRule = {
   enabled: boolean;
   deliveries: WebhookDelivery[];
 };
+type ProjectOverview = {
+  counts: { collections: number; requests: number; activeSchedules: number };
+  last24Hours: {
+    total: number;
+    queued: number;
+    running: number;
+    passed: number;
+    failed: number;
+    passRate: number | null;
+    averageRequestDurationMs: number | null;
+  };
+  recentRuns: Array<{
+    id: string;
+    status: string;
+    createdAt: string;
+    collection: { id: string; name: string };
+    _count: { results: number };
+  }>;
+  generatedAt: string;
+};
 type Run = {
   id: string;
   status: string;
@@ -136,6 +156,8 @@ export default function Workspace() {
   const [collectionId, setCollectionId] = useState("");
   const [run, setRun] = useState<Run | null>(null);
   const [history, setHistory] = useState<Run[]>([]);
+  const [historyCursor, setHistoryCursor] = useState<string | null>(null);
+  const [overview, setOverview] = useState<ProjectOverview | null>(null);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [notificationRules, setNotificationRules] = useState<
     NotificationRule[]
@@ -227,14 +249,28 @@ export default function Workspace() {
       ),
     );
   }
-  async function loadHistory(activeToken: string, id: string) {
+  async function loadOverview(activeToken: string, id: string) {
+    if (!id) return setOverview(null);
+    setOverview(
+      await request<ProjectOverview>(`/projects/${id}/overview`, activeToken),
+    );
+  }
+  async function loadHistory(
+    activeToken: string,
+    id: string,
+    cursor?: string,
+  ) {
     if (!id) {
       setHistory([]);
+      setHistoryCursor(null);
       return;
     }
-    setHistory(
-      await request<Run[]>(`/collections/${id}/runs?limit=10`, activeToken),
+    const items = await request<Run[]>(
+      `/collections/${id}/runs?limit=10${cursor ? `&cursor=${cursor}` : ""}`,
+      activeToken,
     );
+    setHistory((current) => (cursor ? [...current, ...items] : items));
+    setHistoryCursor(items.length === 10 ? items.at(-1)?.id ?? null : null);
   }
   async function loadSchedules(activeToken: string, id: string) {
     if (!id) return setSchedules([]);
@@ -267,6 +303,9 @@ export default function Workspace() {
   }, [token, organizationId]);
   useEffect(() => {
     if (token) void loadSpecifications(token, projectId);
+  }, [token, projectId]);
+  useEffect(() => {
+    if (token) void loadOverview(token, projectId);
   }, [token, projectId]);
   useEffect(() => {
     if (token) void loadCollections(token, projectId);
@@ -448,6 +487,7 @@ export default function Workspace() {
         },
       );
       await loadCollections(token, projectId);
+      await loadOverview(token, projectId);
       setMessage(`${created.generatedCount} smoke test request(s) created.`);
       event.currentTarget.reset();
     } catch (error) {
@@ -488,6 +528,7 @@ export default function Workspace() {
         }),
       });
       await loadCollections(token, projectId);
+      await loadOverview(token, projectId);
       event.currentTarget.reset();
     } catch (error) {
       setMessage(
@@ -523,6 +564,7 @@ export default function Workspace() {
         }),
       });
       await loadCollections(token, projectId);
+      await loadOverview(token, projectId);
       event.currentTarget.reset();
     } catch (error) {
       setMessage(
@@ -551,6 +593,7 @@ export default function Workspace() {
         setRun(completedRun);
       }
       await loadHistory(token, collectionId);
+      await loadOverview(token, projectId);
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Unable to run collection",
@@ -573,6 +616,7 @@ export default function Workspace() {
         }),
       });
       await loadSchedules(token, collectionId);
+      await loadOverview(token, projectId);
       setMessage("Schedule created. The first run may be queued immediately.");
       event.currentTarget.reset();
     } catch (error) {
@@ -589,6 +633,7 @@ export default function Workspace() {
         body: JSON.stringify({ enabled: !schedule.enabled }),
       });
       await loadSchedules(token, collectionId);
+      await loadOverview(token, projectId);
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Unable to update schedule",
@@ -735,6 +780,50 @@ export default function Workspace() {
           </form>
         </article>
       </section>
+      {overview && (
+        <section className="panel">
+          <p className="eyebrow">PROJECT OVERVIEW · LAST 24 HOURS</p>
+          <h2>API reliability at a glance</h2>
+          <div className="workspace-grid">
+            <div>
+              <strong>{overview.last24Hours.passRate ?? "—"}%</strong>
+              <p className="muted">pass rate</p>
+            </div>
+            <div>
+              <strong>{overview.last24Hours.total}</strong>
+              <p className="muted">
+                runs · {overview.last24Hours.failed} failed
+              </p>
+            </div>
+            <div>
+              <strong>
+                {overview.last24Hours.averageRequestDurationMs ?? "—"}ms
+              </strong>
+              <p className="muted">average request duration</p>
+            </div>
+            <div>
+              <strong>{overview.counts.activeSchedules}</strong>
+              <p className="muted">
+                active schedules · {overview.counts.collections} collections ·{" "}
+                {overview.counts.requests} requests
+              </p>
+            </div>
+          </div>
+          {overview.recentRuns.length > 0 && (
+            <div>
+              <h3>Recent project runs</h3>
+              {overview.recentRuns.map((item) => (
+                <p key={item.id}>
+                  {item.status === "PASSED" ? "✅" : item.status === "FAILED" ? "❌" : "⏳"}{" "}
+                  <strong>{item.collection.name}</strong> · {item.status} ·{" "}
+                  {item._count.results} result(s) ·{" "}
+                  {new Date(item.createdAt).toLocaleString()}
+                </p>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
       <section className="panel">
         <p className="eyebrow">ENVIRONMENTS</p>
         <h2>Configure a base URL</h2>
@@ -1005,6 +1094,16 @@ export default function Workspace() {
                 ))}
               </details>
             ))}
+            {historyCursor && (
+              <button
+                className="button secondary"
+                onClick={() =>
+                  token && void loadHistory(token, collectionId, historyCursor)
+                }
+              >
+                Load older runs
+              </button>
+            )}
           </div>
         )}
         {collectionId && (

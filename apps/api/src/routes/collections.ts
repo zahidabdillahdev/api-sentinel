@@ -17,6 +17,7 @@ const notificationRuleParams = z.object({
 });
 const historyQuery = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(10),
+  cursor: z.string().cuid().optional(),
 });
 const collectionBody = z.object({
   name: z.string().min(2).max(100),
@@ -238,11 +239,20 @@ export const collectionRoutes: FastifyPluginAsync = async (app) => {
     { preHandler: app.authenticate },
     async (request) => {
       const { collectionId } = collectionParams.parse(request.params);
-      const { limit } = historyQuery.parse(request.query);
+      const { limit, cursor } = historyQuery.parse(request.query);
       await collectionForUser(app, authenticatedUserId(request), collectionId);
+      if (
+        cursor &&
+        !(await app.prisma.executionRun.findFirst({
+          where: { id: cursor, collectionId },
+          select: { id: true },
+        }))
+      )
+        throw new AppError("Invalid run cursor", 400, "INVALID_RUN_CURSOR");
       return app.prisma.executionRun.findMany({
         where: { collectionId },
         take: limit,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         orderBy: { createdAt: "desc" },
         include: {
           results: {

@@ -25,6 +25,7 @@ Run collection → inspect assertion result and history
 - History shows the ten most recent runs in the workspace; pagination and metrics belong to the next dashboard iteration.
 - Collections support cron schedules with IANA timezones and explicit active/paused states.
 - Collection failure webhooks show only the endpoint origin, keep URL/signing secret write-only, and expose the ten latest delivery attempts for diagnosis.
+- The project overview shows 24-hour pass rate, volume, failures, average latency, schedule coverage, and recent runs; collection history progressively loads older pages.
 - The UI uses English product labels today; localization should be planned rather than added piecemeal.
 
 ## Product principles

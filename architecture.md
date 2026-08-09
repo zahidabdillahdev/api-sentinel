@@ -16,6 +16,8 @@ Collection schedules use BullMQ Job Schedulers keyed by the database schedule ID
 
 Notification rules belong to a collection. The worker evaluates enabled rules after a terminal failed run, decrypts the endpoint only in memory, signs a stable minimal payload with HMAC-SHA256 when configured, and persists one delivery record per attempt. Stable event IDs let consumers deduplicate retries.
 
+Project overview metrics are computed from PostgreSQL on demand with project-scoped relation filters. Run history uses stable execution IDs as cursors, validates that every cursor belongs to the authorized collection, and keeps payload size bounded with a maximum page size of 50.
+
 ### Current request path
 
 ```text

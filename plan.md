@@ -15,7 +15,7 @@ API Sentinel is currently an **MVP in active development**, deployed as a Next.j
 
 ### Next engineering sequence
 
-1. Add per-project overview metrics, pagination, retention, and audit events.
+1. Add retention policies and audit events; project overview metrics and run-history pagination are delivered.
 2. Ship a CI-friendly CLI and GitHub Actions example.
 3. Complete HTTPS/custom-domain deployment and expand integration/end-to-end coverage.
 
@@ -97,6 +97,8 @@ API Sentinel is a team workspace for importing OpenAPI specifications, running A
 - Instrument API, worker, and external HTTP calls with OpenTelemetry.
 - Add backups, restore rehearsal, dashboards, and runbooks.
 - Complete accessibility, load, integration, and end-to-end tests.
+
+Project-scoped 24-hour reliability metrics and cursor-paginated collection history are delivered as the first M4 observability increment.
 
 **Exit condition:** the service has documented operational ownership and can safely support real team data.
 

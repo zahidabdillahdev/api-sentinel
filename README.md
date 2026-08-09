@@ -77,6 +77,10 @@ Consumers should deduplicate events by `x-api-sentinel-event-id`. Return any `2x
 
 The workspace keeps the ten most recent executions for the selected collection. Expand an entry to inspect every request result, including its status code, duration, and assertion failure message.
 
+### Reliability overview and history
+
+The project overview aggregates the last 24 hours of runs into pass rate, passed/failed/active counts, average request duration, and active schedule totals. It also shows the five most recent runs across every collection. Collection history uses cursor pagination: select **Load older runs** to fetch the next ten without reloading or duplicating previous results.
+
 ## Generate smoke tests from OpenAPI
 
 Open a specification reference in the workspace, provide its public API base URL, then select **Create smoke tests from OpenAPI**. API Sentinel creates one request for every eligible `GET` endpoint and derives its expected successful status code from the specification. To avoid accidental writes or incomplete URLs, `POST`, `PUT`, `PATCH`, `DELETE`, and paths containing parameters such as `/users/{id}` are skipped.
@@ -126,6 +130,7 @@ The API starts at `http://localhost:3001`. Its interactive API documentation is 
 - Durable queued execution in a separately scalable worker
 - Cron-based collection schedules with timezone and overlap protection
 - Encrypted, signed failure webhooks with retry history
+- Project reliability metrics and cursor-paginated run history
 - Health endpoint and structured error responses
 
 See [plan.md](./plan.md), [architecture.md](./architecture.md), and [design.md](./design.md) for the product blueprint.
