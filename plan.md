@@ -18,7 +18,7 @@ must remain fully functional without relying on the optional reference VPS.
 
 ### Next engineering sequence
 
-1. Add request quotas, expanded browser end-to-end coverage, and operational runbooks; Redis-backed rate limiting, production authentication lifecycle validation, and the Caddy HTTPS deployment are delivered.
+1. Add request quotas, expand browser E2E into failure and authorization cases, and complete operational runbooks; the first-value Chromium E2E gate, guarded production deployment, Redis-backed rate limiting, and Caddy HTTPS are delivered.
 
 ## Product goal
 
@@ -132,6 +132,7 @@ docs/
 - Unit tests for parsers, diff classification, assertion evaluation, and authorization.
 - Integration tests against PostgreSQL and Redis.
 - Playwright coverage for sign-in, import, test execution, and failure review.
+- The first Playwright Chromium path now covers sign-up/sign-in, revoked logout sessions, project/environment setup, OpenAPI import, collection execution, and a passing result; failure review and broader RBAC cases remain next.
 - Every pull request: formatting, linting, type checking, tests, build, dependency audit, and secret scan.
 - Main branch releases only from a passing, reviewed pull request.
 

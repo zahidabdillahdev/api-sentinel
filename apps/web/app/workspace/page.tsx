@@ -146,7 +146,9 @@ async function request<T>(
   const response = await fetch(`${baseUrl}${path}`, {
     ...init,
     headers: {
-      "content-type": "application/json",
+      ...(init?.body !== undefined
+        ? { "content-type": "application/json" }
+        : {}),
       ...(token ? { authorization: `Bearer ${token}` } : {}),
       ...init?.headers,
     },
@@ -1154,6 +1156,7 @@ export default function Workspace() {
             <label>
               Collection
               <select
+                aria-label="Collection"
                 value={collectionId}
                 onChange={(e) => setCollectionId(e.target.value)}
               >

@@ -51,6 +51,28 @@ npm run dev -w @api-sentinel/api
 npm run dev -w @api-sentinel/web
 ```
 
+### Browser end-to-end test
+
+The Playwright safety gate runs a real Chromium browser against an isolated
+Docker Compose project on ports `3100` and `3101`. It covers registration,
+server-side logout revocation, login, organization/project setup, environment
+editing, OpenAPI import, collection creation, worker execution, and a passing
+result. The test project has its own PostgreSQL volume and never uses the
+reference deployment or its data.
+
+```bash
+test -f .env || cp .env.example .env
+npx playwright install --with-deps chromium
+npm run test:e2e:stack
+```
+
+The wrapper prints service logs on failure and always removes only the isolated
+E2E containers, network, and database volume before returning its exit code.
+
+GitHub Actions runs this flow with one Chromium worker for deterministic CI and
+uploads the Playwright report for diagnosis. Service logs are printed only when
+the E2E job fails.
+
 ## Authentication
 
 Create an account and keep the returned bearer token private. The dashboard at
@@ -223,18 +245,18 @@ The production override runs Caddy as the only public entry point and removes di
    APP_DOMAIN=sentinel.example.com
    ```
 
-4. Deploy the production overlay:
+4. Run the guarded production deployment:
 
    ```bash
-   docker compose -f docker-compose.yml -f docker-compose.production.yml build api web
-   docker compose -f docker-compose.yml -f docker-compose.production.yml run --rm api npx prisma migrate deploy
-   docker compose -f docker-compose.yml -f docker-compose.production.yml up -d
-   curl -fsS https://sentinel.example.com/v1/health
+   npm run deploy:production
    ```
 
-   The web API URL is embedded during the image build. Always include the
-   production overlay when building production web images; building `web` with
-   only the base Compose file embeds the localhost development URL.
+   The script validates Compose configuration, always builds with the
+   production overlay, applies migrations, starts services, verifies the HTTPS
+   health and workspace endpoints, and rejects any web bundle containing the
+   localhost API URL. On failure it prints recent API/web/Caddy logs and exits
+   non-zero. The web API URL is embedded during image build, so production web
+   images must never be built with only the base Compose file.
 
 5. If Cloudflare proxying is desired, enable the orange-cloud proxy only after direct HTTPS succeeds, then select **SSL/TLS → Full (strict)**. Never use Flexible mode because it leaves the Cloudflare-to-origin connection unencrypted and can create redirect loops.
 

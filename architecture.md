@@ -143,6 +143,17 @@ Use separate containers for web, API, and worker. Deploy preview environments fo
 
 The included production Compose overlay adds Caddy as the TLS boundary and removes direct API/web host ports. Caddy uses one same-origin hostname, sends API/documentation paths to Fastify, sends application paths to Next.js, persists ACME material, and emits structured access logs. New installations must activate DNS before starting this overlay.
 
+The repository deployment command is a fail-fast release gate: it validates the
+merged Compose model, builds immutable API/web images with production arguments,
+deploys migrations before services, checks public HTTPS readiness, and scans the
+browser bundle to reject an accidentally embedded localhost API endpoint.
+
+Browser E2E uses a separate Compose project, network, PostgreSQL volume, and
+host ports. Chromium verifies the first-value workflow through the UI while the
+real worker processes the queued run; teardown removes only the isolated test
+resources. CI therefore exercises the same service boundaries as self-hosted
+installations without depending on the reference VPS.
+
 The optional reference deployment serves a publicly trusted certificate for
 `sentinel.zahidabdillah.dev` while its VPS is online; PostgreSQL, Redis, API port
 3001, and web port 3000 remain private to the Compose network. Local and other

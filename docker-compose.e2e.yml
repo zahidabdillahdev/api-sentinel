@@ -1,0 +1,13 @@
+services:
+  api:
+    environment:
+      APP_ORIGIN: http://127.0.0.1:3100
+    ports: !override
+      - "3101:3001"
+
+  web:
+    build:
+      args:
+        NEXT_PUBLIC_API_URL: http://127.0.0.1:3101/v1
+    ports: !override
+      - "3100:3000"

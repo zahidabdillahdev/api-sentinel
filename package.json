@@ -7,13 +7,18 @@
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "check:scripts": "bash -n scripts/deploy-production.sh scripts/test-e2e.sh",
+    "deploy:production": "bash scripts/deploy-production.sh",
     "dev": "npm run dev -w @api-sentinel/api",
-    "lint": "npm run lint --workspaces --if-present",
+    "lint": "eslint e2e playwright.config.ts && npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "test:e2e": "playwright test",
+    "test:e2e:stack": "bash scripts/test-e2e.sh",
+    "typecheck": "tsc --noEmit -p tsconfig.e2e.json && npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {
     "@next/eslint-plugin-next": "^16.3.0",
+    "@playwright/test": "^1.62.1",
     "eslint": "^9.17.0",
     "typescript-eslint": "^8.20.0"
   },
