@@ -40,6 +40,11 @@ enum RunStatus {
   FAILED
 }
 
+enum WebhookDeliveryStatus {
+  DELIVERED
+  FAILED
+}
+
 model Organization {
   id          String       @id @default(cuid())
   name        String
@@ -152,6 +157,27 @@ model Collection {
   requests      TestRequest[]
   runs          ExecutionRun[]
   schedules     Schedule[]
+  notificationRules NotificationRule[]
+}
+
+model NotificationRule {
+  id                      String            @id @default(cuid())
+  collectionId            String
+  name                    String
+  endpointOrigin          String
+  endpointCiphertext      String
+  endpointIv              String
+  endpointAuthTag         String
+  signingSecretCiphertext String?
+  signingSecretIv         String?
+  signingSecretAuthTag    String?
+  enabled                 Boolean           @default(true)
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+  collection              Collection        @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  deliveries              WebhookDelivery[]
+
+  @@unique([collectionId, name])
 }
 
 model Schedule {
@@ -207,6 +233,24 @@ model ExecutionRun {
   collection   Collection      @relation(fields: [collectionId], references: [id], onDelete: Cascade)
   schedule     Schedule?       @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
   results      RequestResult[]
+  webhookDeliveries WebhookDelivery[]
+}
+
+model WebhookDelivery {
+  id             String                @id @default(cuid())
+  notificationRuleId String
+  executionRunId String
+  attempt        Int
+  status         WebhookDeliveryStatus
+  responseStatus Int?
+  durationMs     Int
+  error          String?
+  createdAt      DateTime              @default(now())
+  notificationRule NotificationRule    @relation(fields: [notificationRuleId], references: [id], onDelete: Cascade)
+  executionRun   ExecutionRun          @relation(fields: [executionRunId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationRuleId, executionRunId, attempt])
+  @@index([executionRunId])
 }
 
 model RequestResult {

@@ -49,6 +49,32 @@ Runs are queued through Redis and executed by a dedicated BullMQ worker. The API
 
 Select a collection and create a schedule with a BullMQ cron expression and IANA timezone, for example `0 */5 * * * *` with `Asia/Jakarta`. Schedules can be paused and enabled from the workspace. A partial database uniqueness constraint prevents overlapping active runs for the same schedule, and disabled/deleted schedules are removed from Redis.
 
+### Failure webhooks
+
+Each collection can notify a generic HTTPS endpoint when a run fails. The endpoint URL and optional signing secret are encrypted with AES-256-GCM, are never returned by the API, and are decrypted only by the worker. Delivery attempts have a ten-second timeout, reject redirects and private-network targets, retry up to three times, and appear in the dashboard with response status and duration.
+
+Webhook requests use `content-type: application/json` and include stable `x-api-sentinel-event` and `x-api-sentinel-event-id` headers. When a signing secret is configured, verify `x-api-sentinel-signature`, whose value is `sha256=` followed by the hexadecimal HMAC-SHA256 of the exact request body. A failure payload has this shape:
+
+```json
+{
+  "schemaVersion": "1.0",
+  "event": "collection.run.failed",
+  "eventId": "run:RUN_ID",
+  "occurredAt": "2026-08-09T01:00:01.000Z",
+  "data": {
+    "runId": "RUN_ID",
+    "collection": { "id": "COLLECTION_ID", "name": "Production checks" },
+    "status": "FAILED",
+    "failedRequests": 1,
+    "totalRequests": 3,
+    "startedAt": "2026-08-09T01:00:00.000Z",
+    "finishedAt": "2026-08-09T01:00:01.000Z"
+  }
+}
+```
+
+Consumers should deduplicate events by `x-api-sentinel-event-id`. Return any `2xx` status to acknowledge delivery; all other responses are recorded as failures and retried.
+
 The workspace keeps the ten most recent executions for the selected collection. Expand an entry to inspect every request result, including its status code, duration, and assertion failure message.
 
 ## Generate smoke tests from OpenAPI
@@ -99,6 +125,7 @@ The API starts at `http://localhost:3001`. Its interactive API documentation is 
 - Collection test execution with safe outbound-request controls
 - Durable queued execution in a separately scalable worker
 - Cron-based collection schedules with timezone and overlap protection
+- Encrypted, signed failure webhooks with retry history
 - Health endpoint and structured error responses
 
 See [plan.md](./plan.md), [architecture.md](./architecture.md), and [design.md](./design.md) for the product blueprint.

@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
 
 const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/v1";
 type User = { email: string; name: string | null };
@@ -66,6 +67,23 @@ type Schedule = {
   timezone: string;
   enabled: boolean;
 };
+type WebhookDelivery = {
+  id: string;
+  executionRunId: string;
+  attempt: number;
+  status: "DELIVERED" | "FAILED";
+  responseStatus: number | null;
+  durationMs: number;
+  error: string | null;
+  createdAt: string;
+};
+type NotificationRule = {
+  id: string;
+  name: string;
+  endpointOrigin: string;
+  enabled: boolean;
+  deliveries: WebhookDelivery[];
+};
 type Run = {
   id: string;
   status: string;
@@ -119,6 +137,9 @@ export default function Workspace() {
   const [run, setRun] = useState<Run | null>(null);
   const [history, setHistory] = useState<Run[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [notificationRules, setNotificationRules] = useState<
+    NotificationRule[]
+  >([]);
   const [organizationId, setOrganizationId] = useState("");
   const [projectId, setProjectId] = useState("");
   const [message, setMessage] = useState("");
@@ -221,6 +242,15 @@ export default function Workspace() {
       await request<Schedule[]>(`/collections/${id}/schedules`, activeToken),
     );
   }
+  async function loadNotificationRules(activeToken: string, id: string) {
+    if (!id) return setNotificationRules([]);
+    setNotificationRules(
+      await request<NotificationRule[]>(
+        `/collections/${id}/notification-rules`,
+        activeToken,
+      ),
+    );
+  }
   useEffect(() => {
     const saved = localStorage.getItem("api-sentinel-token");
     if (saved)
@@ -252,6 +282,9 @@ export default function Workspace() {
   }, [token, collectionId]);
   useEffect(() => {
     if (token) void loadSchedules(token, collectionId);
+  }, [token, collectionId]);
+  useEffect(() => {
+    if (token) void loadNotificationRules(token, collectionId);
   }, [token, collectionId]);
   useEffect(() => {
     if (token) void loadVersions(token, specificationId);
@@ -562,11 +595,48 @@ export default function Workspace() {
       );
     }
   }
+  async function createNotificationRule(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !collectionId) return;
+    try {
+      const form = new FormData(event.currentTarget);
+      const signingSecret = String(form.get("signingSecret") ?? "").trim();
+      await request(`/collections/${collectionId}/notification-rules`, token, {
+        method: "POST",
+        body: JSON.stringify({
+          name: form.get("name"),
+          endpoint: form.get("endpoint"),
+          signingSecret: signingSecret || undefined,
+        }),
+      });
+      await loadNotificationRules(token, collectionId);
+      setMessage("Webhook alert saved securely.");
+      event.currentTarget.reset();
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Unable to create webhook",
+      );
+    }
+  }
+  async function toggleNotificationRule(rule: NotificationRule) {
+    if (!token) return;
+    try {
+      await request(`/notification-rules/${rule.id}`, token, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled: !rule.enabled }),
+      });
+      await loadNotificationRules(token, collectionId);
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Unable to update webhook",
+      );
+    }
+  }
   if (!user)
     return (
       <main className="workspace auth">
         <nav>
-          <a href="/">API Sentinel</a>
+          <Link href="/">API Sentinel</Link>
         </nav>
         <section className="panel">
           <p className="eyebrow">GET STARTED</p>
@@ -595,7 +665,7 @@ export default function Workspace() {
   return (
     <main className="workspace">
       <nav>
-        <a href="/">API Sentinel</a>
+        <Link href="/">API Sentinel</Link>
         <span className="muted">{user.email}</span>
         <button
           className="link-button"
@@ -972,6 +1042,74 @@ export default function Workspace() {
                   {schedule.enabled ? "Pause" : "Enable"}
                 </button>
               </p>
+            ))}
+          </div>
+        )}
+        {collectionId && (
+          <div>
+            <p className="eyebrow">ALERTS</p>
+            <h3>Notify your systems when a run fails</h3>
+            <form onSubmit={createNotificationRule}>
+              <label>
+                Alert name
+                <input name="name" placeholder="Incident webhook" required />
+              </label>
+              <label>
+                HTTPS endpoint
+                <input
+                  name="endpoint"
+                  type="url"
+                  placeholder="https://example.com/hooks/…"
+                  required
+                />
+              </label>
+              <label>
+                Signing secret (optional)
+                <input
+                  name="signingSecret"
+                  type="password"
+                  minLength={16}
+                  autoComplete="new-password"
+                />
+              </label>
+              <p className="muted">
+                The full URL and signing secret are encrypted and cannot be
+                read back. Failed deliveries retry up to three times.
+              </p>
+              <button className="button secondary">Create webhook alert</button>
+            </form>
+            {notificationRules.map((rule) => (
+              <details key={rule.id}>
+                <summary>
+                  <strong>{rule.enabled ? "ACTIVE" : "PAUSED"}</strong> {rule.name}{" "}
+                  · {rule.endpointOrigin}{" "}
+                  <button
+                    className="link-button"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      void toggleNotificationRule(rule);
+                    }}
+                  >
+                    {rule.enabled ? "Pause" : "Enable"}
+                  </button>
+                </summary>
+                {rule.deliveries.length === 0 ? (
+                  <p className="muted">No delivery attempts yet.</p>
+                ) : (
+                  rule.deliveries.map((delivery) => (
+                    <p key={delivery.id}>
+                      {delivery.status === "DELIVERED" ? "✅" : "❌"}{" "}
+                      attempt {delivery.attempt} · HTTP{" "}
+                      {delivery.responseStatus ?? "no response"} ·{" "}
+                      {delivery.durationMs}ms ·{" "}
+                      {new Date(delivery.createdAt).toLocaleString()}
+                      {delivery.error && (
+                        <small className="muted"> — {delivery.error}</small>
+                      )}
+                    </p>
+                  ))
+                )}
+              </details>
             ))}
           </div>
         )}

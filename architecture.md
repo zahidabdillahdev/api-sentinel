@@ -10,9 +10,11 @@ The repository currently runs `web` (Next.js), `api` (Fastify), and a separately
 | State | Durable `QUEUED`/`RUNNING`/terminal state machine | Heartbeats and stale-run recovery |
 | Secrets | AES-256-GCM environment secrets using a deployment key | Managed-key envelope encryption and rotation |
 | Storage | PostgreSQL documents and results | PostgreSQL plus object storage for bounded artifacts |
-| Notifications | Not supported yet | Webhook/email delivery with retries and audit trail |
+| Notifications | Encrypted generic failure webhooks with retry history | Email channels, routing policies, and dead-letter replay |
 
 Collection schedules use BullMQ Job Schedulers keyed by the database schedule ID. The worker creates a new durable execution per occurrence; a partial unique index blocks overlapping `QUEUED`/`RUNNING` executions for the same schedule.
+
+Notification rules belong to a collection. The worker evaluates enabled rules after a terminal failed run, decrypts the endpoint only in memory, signs a stable minimal payload with HMAC-SHA256 when configured, and persists one delivery record per attempt. Stable event IDs let consumers deduplicate retries.
 
 ### Current request path
 
@@ -20,6 +22,7 @@ Collection schedules use BullMQ Job Schedulers keyed by the database schedule ID
 Browser → Next.js dashboard → Fastify API → PostgreSQL
                                   │
                                   └→ Redis queue → Worker → public target API
+                                                        └→ webhook endpoint
 ```
 
 The API rejects loopback, private, link-local, and cloud-metadata targets. HTTPS is required by default; public HTTP is an explicit environment-level development/staging exception and never permits private-network targets.
@@ -78,7 +81,7 @@ Project      1---* Specification 1---* SpecificationVersion
 Project      1---* Collection 1---* TestRequest 1---* Assertion
 Collection   1---* Schedule
 ExecutionRun 1---* RequestResult 1---* AssertionResult
-Project      1---* AlertRule 1---* NotificationDelivery
+Collection   1---* NotificationRule 1---* WebhookDelivery *---1 ExecutionRun
 Organization 1---* AuditEvent
 ```
 

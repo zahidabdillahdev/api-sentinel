@@ -5,12 +5,16 @@ import {
   requireProjectRole,
 } from "../lib/authorization.js";
 import { AppError, notFound } from "../lib/errors.js";
+import { encrypt } from "../lib/encryption.js";
 import { assertSafeTarget } from "../lib/safe-url.js";
 
 const projectParams = z.object({ projectId: z.string().cuid() });
 const collectionParams = z.object({ collectionId: z.string().cuid() });
 const runParams = z.object({ runId: z.string().cuid() });
 const scheduleParams = z.object({ scheduleId: z.string().cuid() });
+const notificationRuleParams = z.object({
+  notificationRuleId: z.string().cuid(),
+});
 const historyQuery = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(10),
 });
@@ -36,6 +40,12 @@ const scheduleBody = z.object({
     }, "Invalid IANA timezone"),
 });
 const scheduleStateBody = z.object({ enabled: z.boolean() });
+const notificationRuleBody = z.object({
+  name: z.string().min(2).max(100),
+  endpoint: z.string().url().max(2048),
+  signingSecret: z.string().min(16).max(500).optional(),
+});
+const notificationRuleStateBody = z.object({ enabled: z.boolean() });
 const requestBody = z
   .object({
     name: z.string().min(2).max(100),
@@ -140,6 +150,21 @@ async function scheduleForUser(
   if (!schedule) throw notFound("Schedule");
   await requireProjectRole(app, userId, schedule.collection.projectId, role);
   return schedule;
+}
+
+async function notificationRuleForUser(
+  app: Parameters<FastifyPluginAsync>[0],
+  userId: string,
+  notificationRuleId: string,
+  role: "VIEWER" | "MEMBER" = "VIEWER",
+) {
+  const rule = await app.prisma.notificationRule.findUnique({
+    where: { id: notificationRuleId },
+    include: { collection: { select: { projectId: true } } },
+  });
+  if (!rule) throw notFound("Notification rule");
+  await requireProjectRole(app, userId, rule.collection.projectId, role);
+  return rule;
 }
 
 export const collectionRoutes: FastifyPluginAsync = async (app) => {
@@ -433,6 +458,123 @@ export const collectionRoutes: FastifyPluginAsync = async (app) => {
       await app.runQueue.removeJobScheduler(scheduleId);
       await app.prisma.schedule.delete({ where: { id: scheduleId } });
       return reply.code(204).send();
+    },
+  );
+
+  app.get(
+    "/collections/:collectionId/notification-rules",
+    { preHandler: app.authenticate },
+    async (request) => {
+      const { collectionId } = collectionParams.parse(request.params);
+      await collectionForUser(app, authenticatedUserId(request), collectionId);
+      return app.prisma.notificationRule.findMany({
+        where: { collectionId },
+        select: {
+          id: true,
+          name: true,
+          endpointOrigin: true,
+          enabled: true,
+          createdAt: true,
+          updatedAt: true,
+          deliveries: {
+            take: 10,
+            orderBy: { createdAt: "desc" },
+            select: {
+              id: true,
+              executionRunId: true,
+              attempt: true,
+              status: true,
+              responseStatus: true,
+              durationMs: true,
+              error: true,
+              createdAt: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+    },
+  );
+
+  app.post(
+    "/collections/:collectionId/notification-rules",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const { collectionId } = collectionParams.parse(request.params);
+      await collectionForUser(
+        app,
+        authenticatedUserId(request),
+        collectionId,
+        "MEMBER",
+      );
+      const body = notificationRuleBody.parse(request.body);
+      const endpoint = await assertSafeTarget(body.endpoint);
+      const encryptedEndpoint = encrypt(body.endpoint);
+      const encryptedSecret = body.signingSecret
+        ? encrypt(body.signingSecret)
+        : undefined;
+      try {
+        return reply.code(201).send(
+          await app.prisma.notificationRule.create({
+            data: {
+              collectionId,
+              name: body.name,
+              endpointOrigin: endpoint.origin,
+              endpointCiphertext: encryptedEndpoint.ciphertext,
+              endpointIv: encryptedEndpoint.iv,
+              endpointAuthTag: encryptedEndpoint.authTag,
+              signingSecretCiphertext: encryptedSecret?.ciphertext,
+              signingSecretIv: encryptedSecret?.iv,
+              signingSecretAuthTag: encryptedSecret?.authTag,
+            },
+            select: {
+              id: true,
+              name: true,
+              endpointOrigin: true,
+              enabled: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          }),
+        );
+      } catch (error) {
+        if ((error as { code?: string }).code === "P2002")
+          throw new AppError(
+            "A notification rule with this name already exists",
+            409,
+            "NOTIFICATION_RULE_NAME_TAKEN",
+          );
+        throw error;
+      }
+    },
+  );
+
+  app.patch(
+    "/notification-rules/:notificationRuleId",
+    { preHandler: app.authenticate },
+    async (request) => {
+      const { notificationRuleId } = notificationRuleParams.parse(
+        request.params,
+      );
+      const { enabled } = notificationRuleStateBody.parse(request.body);
+      await notificationRuleForUser(
+        app,
+        authenticatedUserId(request),
+        notificationRuleId,
+        "MEMBER",
+      );
+      return app.prisma.notificationRule.update({
+        where: { id: notificationRuleId },
+        data: { enabled },
+        select: {
+          id: true,
+          name: true,
+          endpointOrigin: true,
+          enabled: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
     },
   );
 };

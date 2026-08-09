@@ -10,15 +10,14 @@ API Sentinel is currently an **MVP in active development**, deployed as a Next.j
 | OpenAPI workspace | Delivered | OpenAPI 3.x JSON import, immutable versions, API reference, version diff. |
 | Manual API checks | Delivered | Collections, environments, encrypted secrets, configurable request payloads, assertions, and run history. |
 | OpenAPI smoke generation | Delivered | Generate safe `GET` requests without path parameters from a reference. |
-| Automation | In progress | Durable worker execution, retries, and cron schedules delivered; alerts planned. |
+| Automation | Delivered | Durable worker execution, retries, cron schedules, and signed failure webhooks with delivery history. |
 | CI distribution | Planned | CLI, GitHub Action, and machine-readable reports. |
 
 ### Next engineering sequence
 
-1. Add notification rules and generic webhook delivery with retry history.
-2. Add per-project overview metrics, pagination, retention, and audit events.
-3. Ship a CI-friendly CLI and GitHub Actions example.
-4. Complete HTTPS/custom-domain deployment and expand integration/end-to-end coverage.
+1. Add per-project overview metrics, pagination, retention, and audit events.
+2. Ship a CI-friendly CLI and GitHub Actions example.
+3. Complete HTTPS/custom-domain deployment and expand integration/end-to-end coverage.
 
 ## Product goal
 
@@ -86,7 +85,8 @@ API Sentinel is a team workspace for importing OpenAPI specifications, running A
 
 - Add cron-like schedules with retry policies and execution locking. **Delivered.**
 - Compare two specification versions and classify breaking changes.
-- Create alert rules and generic webhook/email delivery.
+- Create alert rules and generic webhook delivery with signed payloads and retry history. **Delivered.**
+- Add email delivery and richer alert routing policies.
 - Ship the CLI and a GitHub Actions example.
 
 **Exit condition:** a team can block a pull request or deployment on contract-test failure or a breaking API change.

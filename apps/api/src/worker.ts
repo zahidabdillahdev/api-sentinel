@@ -3,6 +3,7 @@ import { Worker } from "bullmq";
 import { Redis } from "ioredis";
 import { config } from "./config.js";
 import { executeCollectionRun } from "./lib/collection-runner.js";
+import { deliverFailureNotifications } from "./lib/webhook-notifications.js";
 import { COLLECTION_RUN_QUEUE } from "./plugins/queue.js";
 import type { CollectionRunJob } from "./plugins/queue.js";
 
@@ -36,7 +37,15 @@ const worker = new Worker<CollectionRunJob>(
     }
     if (!runId)
       throw new Error("Queue job does not reference a run or schedule");
-    await executeCollectionRun(prisma, runId);
+    try {
+      await executeCollectionRun(prisma, runId);
+    } catch (error) {
+      const finalAttempt =
+        job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+      if (finalAttempt) await deliverFailureNotifications(prisma, runId);
+      throw error;
+    }
+    await deliverFailureNotifications(prisma, runId);
   },
   { connection, concurrency: 5 },
 );
