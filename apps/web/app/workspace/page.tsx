@@ -154,6 +154,7 @@ async function request<T>(
 export default function Workspace() {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [environments, setEnvironments] = useState<Environment[]>([]);
@@ -355,15 +356,16 @@ export default function Workspace() {
   async function auth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
+    setMessage("");
     const form = new FormData(event.currentTarget);
     try {
       const result = await request<{ token: string; user: User }>(
-        "/auth/register",
+        authMode === "login" ? "/auth/login" : "/auth/register",
         undefined,
         {
           method: "POST",
           body: JSON.stringify({
-            name: form.get("name"),
+            ...(authMode === "register" ? { name: form.get("name") } : {}),
             email: form.get("email"),
             password: form.get("password"),
           }),
@@ -374,9 +376,30 @@ export default function Workspace() {
       setUser(result.user);
       await load(result.token);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to register");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : authMode === "login"
+            ? "Unable to sign in"
+            : "Unable to create account",
+      );
     } finally {
       setBusy(false);
+    }
+  }
+  async function signOut() {
+    const activeToken = token;
+    try {
+      if (activeToken)
+        await request("/auth/logout", activeToken, { method: "POST" });
+    } catch {
+      // Local sign-out must still succeed when the session is already invalid.
+    } finally {
+      localStorage.removeItem("api-sentinel-token");
+      setToken(null);
+      setUser(null);
+      setMessage("");
+      setAuthMode("login");
     }
   }
   async function createOrganization(event: FormEvent<HTMLFormElement>) {
@@ -731,23 +754,65 @@ export default function Workspace() {
           <Link href="/">API Sentinel</Link>
         </nav>
         <section className="panel">
-          <p className="eyebrow">GET STARTED</p>
-          <h1>Create your workspace</h1>
+          <p className="eyebrow">
+            {authMode === "login" ? "WELCOME BACK" : "GET STARTED"}
+          </p>
+          <h1>
+            {authMode === "login" ? "Sign in to your workspace" : "Create your workspace"}
+          </h1>
+          <div className="auth-switch" aria-label="Authentication mode">
+            <button
+              type="button"
+              className={authMode === "login" ? "button" : "button secondary"}
+              aria-pressed={authMode === "login"}
+              onClick={() => {
+                setAuthMode("login");
+                setMessage("");
+              }}
+            >
+              Sign in
+            </button>
+            <button
+              type="button"
+              className={authMode === "register" ? "button" : "button secondary"}
+              aria-pressed={authMode === "register"}
+              onClick={() => {
+                setAuthMode("register");
+                setMessage("");
+              }}
+            >
+              Create account
+            </button>
+          </div>
           <form onSubmit={auth}>
-            <label>
-              Name
-              <input name="name" required />
-            </label>
+            {authMode === "register" && (
+              <label>
+                Name
+                <input name="name" autoComplete="name" required />
+              </label>
+            )}
             <label>
               Email
-              <input name="email" type="email" required />
+              <input name="email" type="email" autoComplete="email" required />
             </label>
             <label>
               Password
-              <input name="password" type="password" minLength={12} required />
+              <input
+                name="password"
+                type="password"
+                minLength={12}
+                autoComplete={authMode === "login" ? "current-password" : "new-password"}
+                required
+              />
             </label>
             <button className="button" disabled={busy}>
-              {busy ? "Creating…" : "Create account"}
+              {busy
+                ? authMode === "login"
+                  ? "Signing in…"
+                  : "Creating…"
+                : authMode === "login"
+                  ? "Sign in"
+                  : "Create account"}
             </button>
           </form>
           {message && <p className="notice">{message}</p>}
@@ -761,10 +826,7 @@ export default function Workspace() {
         <span className="muted">{user.email}</span>
         <button
           className="link-button"
-          onClick={() => {
-            localStorage.removeItem("api-sentinel-token");
-            setUser(null);
-          }}
+          onClick={() => void signOut()}
         >
           Sign out
         </button>

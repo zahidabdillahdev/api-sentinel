@@ -15,12 +15,22 @@ npm run dev
 
 ## Authentication
 
-Create an account and keep the returned bearer token private:
+Create an account and keep the returned bearer token private. The dashboard at
+`/workspace` provides separate **Create account** and **Sign in** modes for this
+flow.
 
 ```bash
 curl -X POST http://localhost:3001/v1/auth/register \
   -H 'content-type: application/json' \
   -d '{"name":"API Owner","email":"owner@example.com","password":"replace-with-a-strong-password"}'
+```
+
+Existing users sign in with the same email and password:
+
+```bash
+curl -X POST http://localhost:3001/v1/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"email":"owner@example.com","password":"replace-with-a-strong-password"}'
 ```
 
 Pass the token to protected endpoints:
@@ -31,6 +41,10 @@ curl http://localhost:3001/v1/organizations \
 ```
 
 Sessions expire after seven days. The database stores only a SHA-256 digest of each session token; passwords are salted and hashed with scrypt. All organization, project, and specification routes enforce membership roles on the server.
+
+Signing out revokes the active server-side session immediately. Send the bearer
+token to `POST /v1/auth/logout`; clients should then remove their local copy of
+the token. A revoked token returns `401` from protected endpoints.
 
 ## Test collections and target safety
 

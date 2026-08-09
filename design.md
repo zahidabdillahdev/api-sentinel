@@ -2,11 +2,13 @@
 
 ## Current product surface
 
-The live MVP is intentionally a single workspace page while the information architecture below is the target navigation model. It currently supports account creation, organization/project selection, OpenAPI import/reference/version comparison, collection editing, on-demand runs, assertion feedback, run history, and OpenAPI-generated smoke tests.
+The live MVP is intentionally a single workspace page while the information architecture below is the target navigation model. It currently supports account creation, returning-user sign-in, session-aware sign-out, organization/project selection, OpenAPI import/reference/version comparison, collection editing, on-demand runs, assertion feedback, run history, and OpenAPI-generated smoke tests.
 
 ### Current first-value workflow
 
 ```text
+Create account or sign in
+          ↓
 Create organization/project
           ↓
 Import OpenAPI 3.x JSON

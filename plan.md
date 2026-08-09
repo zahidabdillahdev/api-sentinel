@@ -1,12 +1,12 @@
 # API Sentinel — Delivery Plan
 
-## Implementation status — 2026-08-09
+## Implementation status — 2026-08-10
 
 API Sentinel is currently an **MVP in active development**, deployed as a Next.js dashboard, Fastify API, and BullMQ worker backed by PostgreSQL and Redis.
 
 | Area | Status | Delivered behaviour |
 | --- | --- | --- |
-| Identity and access | Delivered | Register/login sessions, organization membership, invitations, project-scoped RBAC. |
+| Identity and access | Delivered | Account creation, sign-in, server-side session revocation, organization membership, invitations, and project-scoped RBAC. |
 | OpenAPI workspace | Delivered | OpenAPI 3.x JSON import, immutable versions, API reference, version diff. |
 | Manual API checks | Delivered | Collections, environments, encrypted secrets, configurable request payloads, assertions, and run history. |
 | OpenAPI smoke generation | Delivered | Generate safe `GET` requests without path parameters from a reference. |
@@ -15,7 +15,7 @@ API Sentinel is currently an **MVP in active development**, deployed as a Next.j
 
 ### Next engineering sequence
 
-1. Add request quotas, expanded integration/end-to-end coverage, and operational runbooks; Redis-backed rate limiting and the Caddy HTTPS deployment are delivered.
+1. Add request quotas, expanded browser end-to-end coverage, and operational runbooks; Redis-backed rate limiting, production authentication lifecycle validation, and the Caddy HTTPS deployment are delivered.
 
 ## Product goal
 
