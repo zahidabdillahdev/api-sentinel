@@ -15,8 +15,7 @@ API Sentinel is currently an **MVP in active development**, deployed as a Next.j
 
 ### Next engineering sequence
 
-1. Activate the prepared Caddy HTTPS overlay after the external DNS record points to the VPS.
-2. Add request quotas, expanded integration/end-to-end coverage, and operational runbooks; Redis-backed rate limiting is delivered.
+1. Add request quotas, expanded integration/end-to-end coverage, and operational runbooks; Redis-backed rate limiting and the Caddy HTTPS deployment are delivered.
 
 ## Product goal
 
@@ -98,6 +97,7 @@ API Sentinel is a team workspace for importing OpenAPI specifications, running A
 - Instrument API, worker, and external HTTP calls with OpenTelemetry.
 - Add backups, restore rehearsal, dashboards, and runbooks.
 - Complete accessibility, load, integration, and end-to-end tests.
+- Serve the reference deployment through a custom domain with automatic HTTPS and private backend ports. **Delivered.**
 
 Project-scoped 24-hour reliability metrics and cursor-paginated collection history are delivered as the first M4 observability increment.
 

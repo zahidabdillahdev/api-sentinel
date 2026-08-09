@@ -182,6 +182,8 @@ Caddy requires the domain to resolve to the VPS, public ports 80/443, and persis
 
 After HTTPS is active, use only the domain URL in tokens, CLI configuration, and browser sessions. Rotate any VPS password or token ever pasted into chat/history, prefer SSH keys, and disable password SSH authentication after confirming key access.
 
+The reference VPS deployment is live at `https://sentinel.zahidabdillah.dev`; its API health endpoint is `https://sentinel.zahidabdillah.dev/v1/health` and interactive API documentation is available under `/documentation`.
+
 ## MVP capabilities
 
 - Organizations, projects, and project-scoped access controls

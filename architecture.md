@@ -136,4 +136,6 @@ The diff engine normalizes two OpenAPI documents into a canonical endpoint and s
 
 Use separate containers for web, API, and worker. Deploy preview environments for pull requests, then promote immutable images to staging and production through GitHub Actions. Managed PostgreSQL, managed Redis, encrypted object storage, and a secret manager are required in production.
 
-The included production Compose overlay adds Caddy as the TLS boundary and removes direct API/web host ports. Caddy uses one same-origin hostname, sends API/documentation paths to Fastify, sends application paths to Next.js, persists ACME material, and emits structured access logs. DNS activation remains an external deployment prerequisite.
+The included production Compose overlay adds Caddy as the TLS boundary and removes direct API/web host ports. Caddy uses one same-origin hostname, sends API/documentation paths to Fastify, sends application paths to Next.js, persists ACME material, and emits structured access logs. New installations must activate DNS before starting this overlay.
+
+The reference deployment has completed DNS activation and serves a publicly trusted certificate for `sentinel.zahidabdillah.dev`; PostgreSQL, Redis, API port 3001, and web port 3000 remain private to the Compose network.
