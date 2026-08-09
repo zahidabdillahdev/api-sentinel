@@ -4,6 +4,9 @@
 
 API Sentinel is currently an **MVP in active development**, deployed as a Next.js dashboard, Fastify API, and BullMQ worker backed by PostgreSQL and Redis.
 
+Distribution is self-hosting first: localhost and independent HTTPS deployments
+must remain fully functional without relying on the optional reference VPS.
+
 | Area | Status | Delivered behaviour |
 | --- | --- | --- |
 | Identity and access | Delivered | Account creation, sign-in, server-side session revocation, organization membership, invitations, and project-scoped RBAC. |

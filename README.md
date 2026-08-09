@@ -2,15 +2,53 @@
 
 API Sentinel is an open-source workspace for OpenAPI versioning, breaking-change detection, repeatable API checks, and reliability history.
 
+The repository is the product; the public website is only a reference
+deployment. If that VPS is stopped or replaced, developers can still run API
+Sentinel locally or self-host the same stack on their own infrastructure.
+
+## Ways to run API Sentinel
+
+| Mode | Dashboard | Intended use |
+| --- | --- | --- |
+| Local Docker | `http://localhost:3000` | Evaluation, development, and private workstation use. |
+| Reference deployment | `https://sentinel.zahidabdillah.dev` | Public demo and shared hosted workspace while the reference VPS is online. |
+| Self-hosted | A team's own HTTPS domain | Persistent team use with infrastructure and data controlled by that team. |
+
+Plain HTTP is acceptable for loopback-only local development. Any instance
+available over a network or the public internet should use HTTPS, because login
+credentials, bearer tokens, specifications, environment secrets, and API test
+results are sensitive.
+
 ## Quick start
 
 ```bash
 cp .env.example .env
+docker compose build api web
+docker compose up -d postgres redis
+docker compose run --rm api npx prisma migrate deploy
 docker compose up -d
-npm install
+curl -fsS http://localhost:3001/v1/health
+```
+
+Open `http://localhost:3000/workspace`. The example environment uses Docker
+service names for PostgreSQL and Redis, while the browser intentionally reaches
+the dashboard and API through localhost. No VPS or public domain is required.
+Basic features start without an encryption key; configure a 64-hex-character
+`ENCRYPTION_KEY` before storing environment secrets.
+
+### Source-code development outside Docker
+
+To run Node.js directly on the host, start only the dependencies with
+`docker compose up -d postgres redis`, change `DATABASE_URL` and `REDIS_URL` in
+the gitignored `.env` to use `localhost`, then run:
+
+```bash
+npm ci
 npm run db:generate -w @api-sentinel/api
 npm run db:migrate -w @api-sentinel/api
-npm run dev
+npm run dev -w @api-sentinel/api
+# In another terminal:
+npm run dev -w @api-sentinel/web
 ```
 
 ## Authentication
@@ -194,13 +232,21 @@ The production override runs Caddy as the only public entry point and removes di
    curl -fsS https://sentinel.example.com/v1/health
    ```
 
+   The web API URL is embedded during the image build. Always include the
+   production overlay when building production web images; building `web` with
+   only the base Compose file embeds the localhost development URL.
+
 5. If Cloudflare proxying is desired, enable the orange-cloud proxy only after direct HTTPS succeeds, then select **SSL/TLS → Full (strict)**. Never use Flexible mode because it leaves the Cloudflare-to-origin connection unencrypted and can create redirect loops.
 
 Caddy requires the domain to resolve to the VPS, public ports 80/443, and persistent `/data` storage; it then obtains, renews, and serves certificates automatically. See the [Caddy automatic HTTPS requirements](https://caddyserver.com/docs/automatic-https) and [Cloudflare Full (strict) requirements](https://developers.cloudflare.com/ssl/origin-configuration/ssl-modes/full-strict/).
 
 After HTTPS is active, use only the domain URL in tokens, CLI configuration, and browser sessions. Rotate any VPS password or token ever pasted into chat/history, prefer SSH keys, and disable password SSH authentication after confirming key access.
 
-The reference VPS deployment is live at `https://sentinel.zahidabdillah.dev`; its API health endpoint is `https://sentinel.zahidabdillah.dev/v1/health` and interactive API documentation is available under `/documentation`.
+The reference VPS deployment is live at `https://sentinel.zahidabdillah.dev`
+while its host is online; its API health endpoint is
+`https://sentinel.zahidabdillah.dev/v1/health` and interactive API
+documentation is available under `/documentation`. It is not a dependency for
+local or independently self-hosted installations.
 
 ## MVP capabilities
 

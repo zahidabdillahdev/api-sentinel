@@ -4,6 +4,11 @@
 
 The repository currently runs `web` (Next.js), `api` (Fastify), and a separately scalable BullMQ `worker`, with private PostgreSQL and Redis dependencies. The API authorizes and queues runs; only the worker executes user-configured target requests.
 
+The architecture is deployment-independent. Local Docker, the public reference
+VPS, and third-party self-hosted installations run the same services and own
+their own PostgreSQL data. No installation depends on the availability or IP
+address of the reference VPS.
+
 | Capability | Current implementation | Target production design |
 | --- | --- | --- |
 | Execution | BullMQ worker with queue isolation and retries | Cancellation, quotas, and workload classes |
@@ -138,4 +143,8 @@ Use separate containers for web, API, and worker. Deploy preview environments fo
 
 The included production Compose overlay adds Caddy as the TLS boundary and removes direct API/web host ports. Caddy uses one same-origin hostname, sends API/documentation paths to Fastify, sends application paths to Next.js, persists ACME material, and emits structured access logs. New installations must activate DNS before starting this overlay.
 
-The reference deployment has completed DNS activation and serves a publicly trusted certificate for `sentinel.zahidabdillah.dev`; PostgreSQL, Redis, API port 3001, and web port 3000 remain private to the Compose network.
+The optional reference deployment serves a publicly trusted certificate for
+`sentinel.zahidabdillah.dev` while its VPS is online; PostgreSQL, Redis, API port
+3001, and web port 3000 remain private to the Compose network. Local and other
+self-hosted installations remain fully independent if this reference instance
+is stopped, moved to a new IP address, or retired.

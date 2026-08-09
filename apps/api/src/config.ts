@@ -15,10 +15,10 @@ const configSchema = z
       .default("false")
       .transform((value) => value === "true"),
     RATE_LIMIT_MAX: z.coerce.number().int().min(10).max(10_000).default(300),
-    ENCRYPTION_KEY: z
-      .string()
-      .regex(/^[a-f0-9]{64}$/i)
-      .optional(),
+    ENCRYPTION_KEY: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z.string().regex(/^[a-f0-9]{64}$/i).optional(),
+    ),
     ALLOW_INSECURE_HTTP_TARGETS: z
       .enum(["true", "false"])
       .default("false")
