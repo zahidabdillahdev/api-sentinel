@@ -28,6 +28,7 @@ Run collection → inspect assertion result and history
 - The project overview shows 24-hour pass rate, volume, failures, average latency, schedule coverage, and recent runs; collection history progressively loads older pages.
 - The governance panel gives administrators explicit 7–365 day retention controls and gives members a readable actor/action timeline without exposing secret values.
 - The UI uses English product labels today; localization should be planned rather than added piecemeal.
+- Production uses one HTTPS origin for dashboard and API, avoiding mixed-content and cross-origin friction in browser workflows.
 
 ## Product principles
 

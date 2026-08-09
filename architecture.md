@@ -31,6 +31,8 @@ Browser → Next.js dashboard → Fastify API → PostgreSQL
 
 The API rejects loopback, private, link-local, and cloud-metadata targets. HTTPS is required by default; public HTTP is an explicit environment-level development/staging exception and never permits private-network targets.
 
+Fastify enforces a 2 MiB body ceiling and Redis-backed per-IP rate limits, with stricter authentication-route limits. Proxy-derived client addresses are trusted only when the explicit production proxy setting is enabled.
+
 ## Technical choices
 
 | Area | Choice | Reason |
@@ -133,3 +135,5 @@ The diff engine normalizes two OpenAPI documents into a canonical endpoint and s
 ## Deployment
 
 Use separate containers for web, API, and worker. Deploy preview environments for pull requests, then promote immutable images to staging and production through GitHub Actions. Managed PostgreSQL, managed Redis, encrypted object storage, and a secret manager are required in production.
+
+The included production Compose overlay adds Caddy as the TLS boundary and removes direct API/web host ports. Caddy uses one same-origin hostname, sends API/documentation paths to Fastify, sends application paths to Next.js, persists ACME material, and emits structured access logs. DNS activation remains an external deployment prerequisite.

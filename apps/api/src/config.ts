@@ -10,6 +10,11 @@ const configSchema = z
     DATABASE_URL: z.string().url(),
     REDIS_URL: z.string().url().default("redis://localhost:6379"),
     APP_ORIGIN: z.string().url().default("http://localhost:3000"),
+    TRUST_PROXY: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((value) => value === "true"),
+    RATE_LIMIT_MAX: z.coerce.number().int().min(10).max(10_000).default(300),
     ENCRYPTION_KEY: z
       .string()
       .regex(/^[a-f0-9]{64}$/i)

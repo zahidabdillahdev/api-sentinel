@@ -1,8 +1,10 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import { ZodError } from "zod";
+import { Redis } from "ioredis";
 import { config } from "./config.js";
 import { AppError } from "./lib/errors.js";
 import prismaPlugin from "./plugins/prisma.js";
@@ -21,8 +23,32 @@ export async function buildApp() {
   const app = Fastify({
     logger: { level: config.LOG_LEVEL },
     requestIdHeader: "x-request-id",
+    trustProxy: config.TRUST_PROXY,
+    bodyLimit: 2 * 1024 * 1024,
   });
   await app.register(cors, { origin: config.APP_ORIGIN, credentials: true });
+  const rateLimitRedis = new Redis(config.REDIS_URL, {
+    connectTimeout: 5_000,
+    maxRetriesPerRequest: 1,
+  });
+  await app.register(rateLimit, {
+    global: true,
+    max: config.RATE_LIMIT_MAX,
+    timeWindow: "1 minute",
+    redis: rateLimitRedis,
+    skipOnError: false,
+    errorResponseBuilder: (_request, context) => ({
+      statusCode: 429,
+      error: {
+        code: "RATE_LIMITED",
+        message: "Too many requests; retry later",
+        details: { retryAfterSeconds: Math.max(1, Math.ceil(context.ttl / 1_000)) },
+      },
+    }),
+  });
+  app.addHook("onClose", async () => {
+    await rateLimitRedis.quit();
+  });
   await app.register(swagger, {
     openapi: { info: { title: "API Sentinel API", version: "0.1.0" } },
   });
@@ -60,6 +86,13 @@ export async function buildApp() {
             details: error.details,
           },
         });
+    if ((error as { statusCode?: number }).statusCode === 429)
+      return reply.code(429).send({
+        error: {
+          code: "RATE_LIMITED",
+          message: "Too many requests; retry later",
+        },
+      });
     return reply
       .code(500)
       .send({

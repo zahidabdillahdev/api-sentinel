@@ -131,6 +131,8 @@ Keep this key outside Git and back it up in a secret manager. Losing it makes ex
 
 The runner blocks localhost, private-network, link-local, and cloud-metadata targets, disallows redirects, and enforces a ten-second timeout.
 
+The API limits request bodies to 2 MiB and uses Redis-backed rate limiting so limits remain consistent across API replicas. The default is 300 requests per source IP per minute; register/login are restricted to 10 per minute. Configure the global ceiling with `RATE_LIMIT_MAX`. Only set `TRUST_PROXY=true` behind a trusted reverse proxy such as the included production Caddy service—never on a directly exposed API port.
+
 HTTPS is required by default. Developer teams can explicitly support public HTTP staging or mock targets by setting the following environment variable:
 
 ```bash
@@ -152,6 +154,33 @@ curl http://localhost:3001/v1/health
 PostgreSQL and Redis are available only inside the Compose network. Put a TLS reverse proxy in front of ports `3000` and `3001` before using production credentials over a public network. Set `ALLOW_INSECURE_HTTP_TARGETS=false` in production unless a public HTTP target is an explicit requirement.
 
 The API starts at `http://localhost:3001`. Its interactive API documentation is at `/documentation`.
+
+### Custom domain and automatic HTTPS
+
+The production override runs Caddy as the only public entry point and removes direct host bindings for the web and API containers. Caddy routes `/v1/*` and `/documentation*` to Fastify, routes everything else to Next.js, adds baseline security headers, redirects HTTP to HTTPS, and persists certificate state.
+
+1. Create a DNS `A` record for your subdomain pointing to the VPS public IPv4 address. Keep it **DNS only** until the origin certificate has been issued.
+2. Allow inbound TCP `80` and TCP/UDP `443` in the VPS and provider firewalls.
+3. Set `APP_DOMAIN` in the gitignored `.env` file, for example:
+
+   ```bash
+   APP_DOMAIN=sentinel.example.com
+   ```
+
+4. Deploy the production overlay:
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.production.yml build api web
+   docker compose -f docker-compose.yml -f docker-compose.production.yml run --rm api npx prisma migrate deploy
+   docker compose -f docker-compose.yml -f docker-compose.production.yml up -d
+   curl -fsS https://sentinel.example.com/v1/health
+   ```
+
+5. If Cloudflare proxying is desired, enable the orange-cloud proxy only after direct HTTPS succeeds, then select **SSL/TLS → Full (strict)**. Never use Flexible mode because it leaves the Cloudflare-to-origin connection unencrypted and can create redirect loops.
+
+Caddy requires the domain to resolve to the VPS, public ports 80/443, and persistent `/data` storage; it then obtains, renews, and serves certificates automatically. See the [Caddy automatic HTTPS requirements](https://caddyserver.com/docs/automatic-https) and [Cloudflare Full (strict) requirements](https://developers.cloudflare.com/ssl/origin-configuration/ssl-modes/full-strict/).
+
+After HTTPS is active, use only the domain URL in tokens, CLI configuration, and browser sessions. Rotate any VPS password or token ever pasted into chat/history, prefer SSH keys, and disable password SSH authentication after confirming key access.
 
 ## MVP capabilities
 

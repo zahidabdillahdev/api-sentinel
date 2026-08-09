@@ -24,7 +24,7 @@ async function createSession(app: Parameters<FastifyPluginAsync>[0], userId: str
 }
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
-  app.post('/auth/register', async (request, reply) => {
+  app.post('/auth/register', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const body = registerSchema.parse(request.body);
     const existing = await app.prisma.user.findUnique({ where: { email: body.email } });
     if (existing?.passwordHash) throw new AppError('An account with this email already exists', 409, 'EMAIL_TAKEN');
@@ -37,7 +37,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     return reply.code(201).send({ user: publicUser(user), ...session });
   });
 
-  app.post('/auth/login', async (request) => {
+  app.post('/auth/login', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request) => {
     const body = credentialsSchema.parse(request.body);
     const user = await app.prisma.user.findUnique({ where: { email: body.email } });
     if (!user?.passwordHash || !await verifyPassword(body.password, user.passwordHash)) {
