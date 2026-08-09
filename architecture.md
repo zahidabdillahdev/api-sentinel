@@ -64,6 +64,8 @@ Next.js web app -------> Fastify API -------> PostgreSQL
 
 The API service owns authentication, authorization, configuration, and synchronous reads/writes. The worker is the only component that executes untrusted user-configured HTTP requests and scheduled work. This separation keeps slow or failing target APIs from degrading the user-facing API.
 
+The repository-local CLI is a thin API client: it never executes target requests directly. It queues an authorized collection run, polls its durable state, emits a versioned JSON report, and maps terminal outcomes to deterministic process exit codes for CI systems.
+
 ## Core domains
 
 | Domain | Responsibilities |

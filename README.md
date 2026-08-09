@@ -91,6 +91,32 @@ The governance panel exposes an append-only audit feed for retention, schedule, 
 
 Open a specification reference in the workspace, provide its public API base URL, then select **Create smoke tests from OpenAPI**. API Sentinel creates one request for every eligible `GET` endpoint and derives its expected successful status code from the specification. To avoid accidental writes or incomplete URLs, `POST`, `PUT`, `PATCH`, `DELETE`, and paths containing parameters such as `/users/{id}` are skipped.
 
+## CLI and continuous integration
+
+Build the repository-local CLI, then provide an API URL ending in `/v1`, a bearer token, and the collection ID:
+
+```bash
+npm ci
+npm run build -w @api-sentinel/cli
+
+export API_SENTINEL_URL=https://sentinel.example.com/v1
+export API_SENTINEL_TOKEN=replace-with-a-private-token
+node apps/cli/dist/index.js run \
+  --collection COLLECTION_ID \
+  --timeout 120 \
+  --output pretty
+```
+
+Use `--output json` to emit a stable `schemaVersion: "1.0"` report containing run metadata, aggregate counts, and per-request results. Keep the token in a CI secret; do not put it in arguments, logs, repository variables, or committed workflow files. Supported exit codes are:
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | The collection finished with `PASSED`. |
+| `1` | The collection ran successfully but one or more checks failed. |
+| `2` | Configuration, authentication, API, network, or timeout error. |
+
+The manually triggered example at [`.github/workflows/api-sentinel-example.yml`](./.github/workflows/api-sentinel-example.yml) reads `API_SENTINEL_TOKEN` from GitHub Actions secrets, uploads the JSON report as an artifact, and fails the job when the collection fails. For branch protection, adapt its `workflow_dispatch` trigger to `pull_request` after assigning a stable collection and API URL.
+
 ## Environment secrets
 
 Each project environment can store write-only secrets such as `token` or `apiKey`. Reference them in request headers or bodies with `{{token}}`. Values are encrypted with AES-256-GCM before persistence, are never returned by read endpoints, are decrypted only during execution, and are redacted from stored execution errors.
@@ -138,6 +164,7 @@ The API starts at `http://localhost:3001`. Its interactive API documentation is 
 - Encrypted, signed failure webhooks with retry history
 - Project reliability metrics and cursor-paginated run history
 - Configurable run retention and project-scoped audit events
+- CI-friendly collection runner CLI with versioned JSON reports and deterministic exit codes
 - Health endpoint and structured error responses
 
 See [plan.md](./plan.md), [architecture.md](./architecture.md), and [design.md](./design.md) for the product blueprint.

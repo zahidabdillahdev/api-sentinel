@@ -1,0 +1,38 @@
+name: API Sentinel collection check
+
+on:
+  workflow_dispatch:
+    inputs:
+      collection_id:
+        description: Collection ID to run
+        required: true
+      api_url:
+        description: API Sentinel API base URL ending in /v1
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  collection-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w @api-sentinel/cli
+      - name: Run API collection
+        env:
+          API_SENTINEL_URL: ${{ inputs.api_url }}
+          API_SENTINEL_TOKEN: ${{ secrets.API_SENTINEL_TOKEN }}
+        run: node apps/cli/dist/index.js run --collection "${{ inputs.collection_id }}" --output json > api-sentinel-report.json
+      - name: Upload machine-readable report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-sentinel-report
+          path: api-sentinel-report.json
+          if-no-files-found: ignore

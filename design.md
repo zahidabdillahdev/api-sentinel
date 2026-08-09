@@ -37,6 +37,8 @@ Run collection → inspect assertion result and history
 4. **Progressive disclosure.** Beginners see sensible defaults; advanced options are available without crowding core workflows.
 5. **Developer-native.** Respect familiar concepts: environments, collections, HTTP methods, JSON, diffs, exit codes, and CI.
 
+The CLI mirrors this principle with terse human output by default, stable JSON on demand, actionable stderr errors, and separate exit codes for assertion failure versus tooling/configuration failure.
+
 ## Target information architecture
 
 ```text
