@@ -42,16 +42,26 @@ docker run -d --name "$container_name" --network none \
   postgres:16-alpine >/dev/null
 
 postgres_ready=false
-for _attempt in {1..30}; do
-  if docker exec "$container_name" pg_isready \
-    --username api_sentinel --dbname api_sentinel_rehearsal >/dev/null 2>&1; then
+for _attempt in {1..60}; do
+  init_complete=false
+  if docker logs "$container_name" 2>&1 |
+    grep -Fq 'PostgreSQL init process complete; ready for start up.'; then
+    init_complete=true
+  fi
+  if [[ "$init_complete" == "true" ]] &&
+    docker exec "$container_name" pg_isready \
+      --username api_sentinel --dbname api_sentinel_rehearsal >/dev/null 2>&1; then
     postgres_ready=true
+    break
+  fi
+  if [[ "$(docker inspect --format '{{.State.Running}}' "$container_name")" != "true" ]]; then
     break
   fi
   sleep 1
 done
 if [[ "$postgres_ready" != "true" ]]; then
   printf 'Temporary PostgreSQL did not become ready for rehearsal.\n' >&2
+  docker logs "$container_name" >&2 || true
   exit 1
 fi
 
