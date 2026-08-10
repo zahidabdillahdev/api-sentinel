@@ -18,10 +18,9 @@ must remain fully functional without relying on a central hosted service.
 
 ### Next engineering sequence
 
-1. Complete stale-run recovery, response-size limits, backup/restore runbooks,
-   and broader audit coverage. Organization-scoped active-run quotas and browser
-   E2E coverage for assertion failure, viewer authorization, and quota rejection
-   are delivered in the current hardening increment.
+1. Complete backup/restore runbooks, worker/queue observability, broader audit
+   coverage, and accessibility checks. Active-run quotas, heartbeat-based stale
+   recovery, bounded response reads, and expanded browser E2E are delivered.
 
 ## Product goal
 
@@ -105,11 +104,13 @@ run the system locally or behind the included HTTPS production ingress.
 - Add Redis-backed global/authentication rate limiting. **Delivered.**
 - Add organization-scoped active-run quotas. **Delivered.** Usage budgets and
   per-request limits remain planned.
+- Add worker heartbeats, stale-run recovery, and bounded target response reads.
+  **Delivered.** User cancellation remains planned.
 - Expand audit coverage beyond retention, schedule, and webhook configuration.
 - Instrument API, worker, and external HTTP calls with OpenTelemetry.
 - Add backups, restore rehearsal, dashboards, and runbooks.
 - Complete accessibility, load, and broader integration tests. First-value,
-  assertion-failure, viewer-RBAC, and quota E2E paths are delivered.
+  assertion-failure, viewer-RBAC, quota, and stale-recovery E2E paths are delivered.
 - Serve production deployments through a custom domain with automatic HTTPS and private backend ports. **Delivered.**
 
 Project-scoped 24-hour reliability metrics and cursor-paginated collection history are delivered as the first M4 observability increment.

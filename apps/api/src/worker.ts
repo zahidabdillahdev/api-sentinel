@@ -11,17 +11,41 @@ import {
   ActiveRunQuotaExceededError,
   createQueuedRunWithinQuota,
 } from "./lib/run-quota.js";
+import {
+  recoverStaleRuns,
+  touchRunHeartbeat,
+} from "./lib/run-recovery.js";
 
 const prisma = new PrismaClient();
 const connection = new Redis(config.REDIS_URL, {
   maxRetriesPerRequest: null,
 });
+const HEARTBEAT_INTERVAL_MS = 10_000;
+const NOTIFICATION_RECOVERY_CONCURRENCY = 5;
 const worker = new Worker<CollectionRunJob>(
   COLLECTION_RUN_QUEUE,
   async (job) => {
     if (job.data.maintenance === "retention") {
       const result = await cleanupExpiredRuns(prisma);
       console.info(result, "retention cleanup completed");
+      return;
+    }
+    if (job.data.maintenance === "stale-runs") {
+      const result = await recoverStaleRuns(
+        prisma,
+        config.RUN_STALE_AFTER_SECONDS,
+      );
+      for (
+        let index = 0;
+        index < result.recoveredRunIds.length;
+        index += NOTIFICATION_RECOVERY_CONCURRENCY
+      )
+        await Promise.all(
+          result.recoveredRunIds
+            .slice(index, index + NOTIFICATION_RECOVERY_CONCURRENCY)
+            .map((runId) => deliverFailureNotifications(prisma, runId)),
+        );
+      console.info(result, "stale run recovery completed");
       return;
     }
     let runId = job.data.runId;
@@ -58,13 +82,34 @@ const worker = new Worker<CollectionRunJob>(
     }
     if (!runId)
       throw new Error("Queue job does not reference a run or schedule");
+    const heartbeatTimer = setInterval(() => {
+      void touchRunHeartbeat(prisma, runId).catch((error) =>
+        console.error(
+          { runId, error: error instanceof Error ? error.message : error },
+          "run heartbeat update failed",
+        ),
+      );
+    }, HEARTBEAT_INTERVAL_MS);
     try {
       await executeCollectionRun(prisma, runId);
     } catch (error) {
       const finalAttempt =
         job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
-      if (finalAttempt) await deliverFailureNotifications(prisma, runId);
+      if (finalAttempt) {
+        await prisma.executionRun.updateMany({
+          where: { id: runId, status: { in: ["QUEUED", "RUNNING"] } },
+          data: {
+            status: "FAILED",
+            finishedAt: new Date(),
+            heartbeatAt: new Date(),
+            error: "Execution failed after worker retries",
+          },
+        });
+        await deliverFailureNotifications(prisma, runId);
+      }
       throw error;
+    } finally {
+      clearInterval(heartbeatTimer);
     }
     await deliverFailureNotifications(prisma, runId);
   },
