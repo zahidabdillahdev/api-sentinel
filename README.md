@@ -1,83 +1,131 @@
 # API Sentinel
 
-API Sentinel is an open-source workspace for OpenAPI versioning, breaking-change detection, repeatable API checks, and reliability history.
+API Sentinel is a self-hosted API quality platform for managing OpenAPI
+contracts, detecting breaking changes, running repeatable API checks, and
+tracking reliability over time.
 
-The repository is the product; the public website is only a reference
-deployment. If that VPS is stopped or replaced, developers can still run API
-Sentinel locally or self-host the same stack on their own infrastructure.
+It gives backend, QA, and platform teams one workflow for answering four
+questions:
 
-## Ways to run API Sentinel
+1. What does this API promise?
+2. What changed between contract versions?
+3. Does the deployed API still behave as expected?
+4. Can the same checks protect scheduled monitoring and CI pipelines?
 
-| Mode | Dashboard | Intended use |
-| --- | --- | --- |
-| Local Docker | `http://localhost:3000` | Evaluation, development, and private workstation use. |
-| Reference deployment | `https://sentinel.zahidabdillah.dev` | Public demo and shared hosted workspace while the reference VPS is online. |
-| Self-hosted | A team's own HTTPS domain | Persistent team use with infrastructure and data controlled by that team. |
+## Core capabilities
 
-Plain HTTP is acceptable for loopback-only local development. Any instance
-available over a network or the public internet should use HTTPS, because login
-credentials, bearer tokens, specifications, environment secrets, and API test
-results are sensitive.
+| Area | Capabilities |
+| --- | --- |
+| Team workspace | Organizations, projects, invitations, sessions, and project-scoped roles. |
+| API contracts | OpenAPI 3.x JSON import, immutable versions, API reference, and focused breaking-change reports. |
+| API checks | Collections, environments, request payloads, encrypted variables, and status/header/JSON/latency assertions. |
+| Execution | Durable BullMQ jobs, retries, run history, failure details, and a separately scalable worker. |
+| Automation | Cron schedules, overlap protection, signed failure webhooks, retry history, and retention controls. |
+| Developer tooling | CI-friendly CLI, stable JSON output, deterministic exit codes, and a GitHub Actions example. |
+| Operations | Redis-backed rate limits, audit events, HTTPS ingress, guarded deployment, and browser E2E coverage. |
 
-## Quick start
+## How it works
+
+```text
+Browser / CLI
+      │
+      ▼
+  Next.js UI ─────► Fastify API ─────► PostgreSQL
+                         │
+                         ▼
+                    Redis / BullMQ
+                         │
+                         ▼
+                       Worker ───────► Target APIs
+                         │
+                         └───────────► Failure webhooks
+```
+
+- The API owns authentication, authorization, configuration, and durable run
+  state.
+- The worker is the only component that executes user-configured HTTP requests.
+- PostgreSQL is the system of record; Redis carries queues and schedules.
+- Caddy is the production TLS boundary and keeps application/database ports
+  private.
+
+## Quick start with Docker
+
+### Requirements
+
+- Docker Engine with Docker Compose v2
+- Git
+- `curl` for the health check
+
+### Start the stack
 
 ```bash
+git clone https://github.com/YOUR-USERNAME/api-sentinel.git
+cd api-sentinel
 cp .env.example .env
+
 docker compose build api web
 docker compose up -d postgres redis
 docker compose run --rm api npx prisma migrate deploy
 docker compose up -d
+
 curl -fsS http://localhost:3001/v1/health
 ```
 
-Open `http://localhost:3000/workspace`. The example environment uses Docker
-service names for PostgreSQL and Redis, while the browser intentionally reaches
-the dashboard and API through localhost. No VPS or public domain is required.
-Basic features start without an encryption key; configure a 64-hex-character
-`ENCRYPTION_KEY` before storing environment secrets.
+Open the following local endpoints:
 
-### Source-code development outside Docker
+| Endpoint | URL |
+| --- | --- |
+| Dashboard | `http://localhost:3000/workspace` |
+| API | `http://localhost:3001/v1` |
+| Interactive API documentation | `http://localhost:3001/documentation` |
+| Health check | `http://localhost:3001/v1/health` |
 
-To run Node.js directly on the host, start only the dependencies with
-`docker compose up -d postgres redis`, change `DATABASE_URL` and `REDIS_URL` in
-the gitignored `.env` to use `localhost`, then run:
+Local HTTP is appropriate for loopback development. Use HTTPS for every shared,
+remote, staging, or production installation.
 
-```bash
-npm ci
-npm run db:generate -w @api-sentinel/api
-npm run db:migrate -w @api-sentinel/api
-npm run dev -w @api-sentinel/api
-# In another terminal:
-npm run dev -w @api-sentinel/web
+## First workflow
+
+After creating an account:
+
+```text
+Create organization and project
+             │
+             ▼
+Create an environment with an API base URL
+             │
+             ▼
+Import an OpenAPI 3.x JSON document
+             │
+             ├────────► Browse the generated API reference
+             │
+             ├────────► Compare immutable contract versions
+             │
+             ▼
+Create or generate a test collection
+             │
+             ▼
+Run checks and inspect assertion results
+             │
+             ├────────► Schedule recurring execution
+             └────────► Notify a signed webhook on failure
 ```
 
-### Browser end-to-end test
+### Important concepts
 
-The Playwright safety gate runs a real Chromium browser against an isolated
-Docker Compose project on ports `3100` and `3101`. It covers registration,
-server-side logout revocation, login, organization/project setup, environment
-editing, OpenAPI import, collection creation, worker execution, and a passing
-result. The test project has its own PostgreSQL volume and never uses the
-reference deployment or its data.
+| Concept | Purpose |
+| --- | --- |
+| Organization | Team boundary containing members and projects. |
+| Project | Ownership boundary for one API or related API surface. |
+| Environment | Named base URL and write-only variables for a deployment such as staging or production. |
+| Specification | Logical API contract with immutable imported versions. |
+| Collection | Ordered group of reusable HTTP checks. |
+| Run | Durable queued execution with request and assertion results. |
+| Schedule | Cron-based recurring collection execution in an IANA timezone. |
+| Notification rule | Signed HTTPS webhook invoked after a failed run. |
 
-```bash
-test -f .env || cp .env.example .env
-npx playwright install --with-deps chromium
-npm run test:e2e:stack
-```
+## Authentication and authorization
 
-The wrapper prints service logs on failure and always removes only the isolated
-E2E containers, network, and database volume before returning its exit code.
-
-GitHub Actions runs this flow with one Chromium worker for deterministic CI and
-uploads the Playwright report for diagnosis. Service logs are printed only when
-the E2E job fails.
-
-## Authentication
-
-Create an account and keep the returned bearer token private. The dashboard at
-`/workspace` provides separate **Create account** and **Sign in** modes for this
-flow.
+Create an account:
 
 ```bash
 curl -X POST http://localhost:3001/v1/auth/register \
@@ -85,7 +133,7 @@ curl -X POST http://localhost:3001/v1/auth/register \
   -d '{"name":"API Owner","email":"owner@example.com","password":"replace-with-a-strong-password"}'
 ```
 
-Existing users sign in with the same email and password:
+Sign in:
 
 ```bash
 curl -X POST http://localhost:3001/v1/auth/login \
@@ -93,195 +141,394 @@ curl -X POST http://localhost:3001/v1/auth/login \
   -d '{"email":"owner@example.com","password":"replace-with-a-strong-password"}'
 ```
 
-Pass the token to protected endpoints:
+Pass the returned token as a bearer token:
 
 ```bash
 curl http://localhost:3001/v1/organizations \
   -H 'authorization: Bearer YOUR_TOKEN'
 ```
 
-Sessions expire after seven days. The database stores only a SHA-256 digest of each session token; passwords are salted and hashed with scrypt. All organization, project, and specification routes enforce membership roles on the server.
+Sessions expire after seven days. Passwords are salted and hashed with scrypt;
+only SHA-256 session-token digests are stored. `POST /v1/auth/logout` revokes
+the active server-side session immediately.
 
-Signing out revokes the active server-side session immediately. Send the bearer
-token to `POST /v1/auth/logout`; clients should then remove their local copy of
-the token. A revoked token returns `401` from protected endpoints.
+Organization and project resources are protected by server-side role checks.
+Client-side visibility is never treated as an authorization boundary.
 
-## Test collections and target safety
+## OpenAPI contract workflow
 
-Collections run public HTTP requests and can assert:
+API Sentinel accepts OpenAPI 3.x JSON documents with `info.title`,
+`info.version`, and `paths`. Each successful import creates an immutable version
+containing the original document and extracted contract metadata.
 
-- Exact HTTP status code (required)
-- Exact response header value (optional)
-- A JSON value via a dot path such as `$.slideshow.title` (optional)
-- Maximum response duration, up to 10 seconds (optional)
+The workspace can:
 
-JSON expected values must be valid JSON literals: use `"healthy"`, `true`, `42`, or `{ "key": "value" }`. Header and JSON checks require both of their corresponding fields. Each run records the status, duration, pass/fail state, and a readable failure reason.
+- Render a browsable reference of paths, methods, summaries, and responses.
+- Compare two versions and classify supported changes as breaking or
+  non-breaking.
+- Generate smoke-test requests from eligible `GET` operations.
 
-Runs are queued through Redis and executed by a dedicated BullMQ worker. The API returns a durable `QUEUED` run immediately, the dashboard polls through `RUNNING`, and the worker persists terminal results. Jobs retry transient worker failures up to three times with exponential backoff.
+Generated smoke tests intentionally skip write methods and paths containing
+parameters such as `/users/{id}`. This avoids accidental mutations and requests
+that cannot be completed safely without user-provided values.
 
-### Scheduled monitoring
+The current breaking-change detector covers removed operations, responses,
+parameters, and schemas; newly required parameters and schema properties; and
+new operations. It is intentionally a focused MVP detector, not yet a complete
+OpenAPI compatibility engine.
 
-Select a collection and create a schedule with a BullMQ cron expression and IANA timezone, for example `0 */5 * * * *` with `Asia/Jakarta`. Schedules can be paused and enabled from the workspace. A partial database uniqueness constraint prevents overlapping active runs for the same schedule, and disabled/deleted schedules are removed from Redis.
+## Collections and assertions
 
-### Failure webhooks
+Every saved request has a required expected status and may also assert:
 
-Each collection can notify a generic HTTPS endpoint when a run fails. The endpoint URL and optional signing secret are encrypted with AES-256-GCM, are never returned by the API, and are decrypted only by the worker. Delivery attempts have a ten-second timeout, reject redirects and private-network targets, retry up to three times, and appear in the dashboard with response status and duration.
+- An exact response-header value.
+- A JSON value at a dot path such as `$.data.status`.
+- A maximum response duration of up to ten seconds.
 
-Webhook requests use `content-type: application/json` and include stable `x-api-sentinel-event` and `x-api-sentinel-event-id` headers. When a signing secret is configured, verify `x-api-sentinel-signature`, whose value is `sha256=` followed by the hexadecimal HMAC-SHA256 of the exact request body. A failure payload has this shape:
+Expected JSON values must be valid JSON literals, for example `"healthy"`,
+`true`, `42`, or `{ "status": "ok" }`.
 
-```json
-{
-  "schemaVersion": "1.0",
-  "event": "collection.run.failed",
-  "eventId": "run:RUN_ID",
-  "occurredAt": "2026-08-09T01:00:01.000Z",
-  "data": {
-    "runId": "RUN_ID",
-    "collection": { "id": "COLLECTION_ID", "name": "Production checks" },
-    "status": "FAILED",
-    "failedRequests": 1,
-    "totalRequests": 3,
-    "startedAt": "2026-08-09T01:00:00.000Z",
-    "finishedAt": "2026-08-09T01:00:01.000Z"
-  }
-}
+Runs move through durable states:
+
+```text
+QUEUED → RUNNING → PASSED
+                 └→ FAILED
 ```
 
-Consumers should deduplicate events by `x-api-sentinel-event-id`. Return any `2xx` status to acknowledge delivery; all other responses are recorded as failures and retried.
+The API persists the queued run before publishing its job. The dashboard polls
+the run, and the worker records status, duration, assertion outcome, and a
+readable failure reason for every request.
 
-The workspace keeps the ten most recent executions for the selected collection. Expand an entry to inspect every request result, including its status code, duration, and assertion failure message.
+## Environments and secrets
 
-### Reliability overview and history
+An environment provides a reusable base URL and write-only values such as API
+tokens. Reference a value in request headers or bodies with `{{variableName}}`.
 
-The project overview aggregates the last 24 hours of runs into pass rate, passed/failed/active counts, average request duration, and active schedule totals. It also shows the five most recent runs across every collection. Collection history uses cursor pagination: select **Load older runs** to fetch the next ten without reloading or duplicating previous results.
+- Values are encrypted with AES-256-GCM before persistence.
+- Plaintext values are never returned after creation.
+- Decryption occurs only inside the worker during execution.
+- Resolved secrets are redacted from stored errors.
+- Editing an environment preserves its collection and secret relationships.
 
-### Retention and audit trail
+Generate a deployment-specific 32-byte key and store its 64-character
+hexadecimal representation in `ENCRYPTION_KEY`:
 
-Project administrators can retain completed runs for 7, 30, 90, 180, or 365 days. A BullMQ maintenance job runs every day at 03:00 UTC with exponential retries. It deletes only terminal `PASSED` and `FAILED` runs whose `finishedAt` timestamp is older than the project cutoff; queued/running executions and configuration records are preserved.
+```bash
+openssl rand -hex 32
+```
 
-The governance panel exposes an append-only audit feed for retention, schedule, and webhook configuration changes. Events record the actor, action, target, timestamp, and non-sensitive context. Full webhook URLs, signing secrets, and environment secret values are never written to audit metadata.
+Back up the key in a secret manager. Losing it makes existing environment
+secrets unrecoverable. Replacing it requires a controlled key-rotation
+migration.
 
-## Generate smoke tests from OpenAPI
+## Target request safety
 
-Open a specification reference in the workspace, provide its public API base URL, then select **Create smoke tests from OpenAPI**. API Sentinel creates one request for every eligible `GET` endpoint and derives its expected successful status code from the specification. To avoid accidental writes or incomplete URLs, `POST`, `PUT`, `PATCH`, `DELETE`, and paths containing parameters such as `/users/{id}` are skipped.
+The worker treats target URLs as untrusted input.
 
-## CLI and continuous integration
+- HTTPS is required by default.
+- Redirects are disabled.
+- Requests have a ten-second timeout.
+- Loopback, private, link-local, and cloud-metadata destinations are blocked.
+- DNS results are checked before a request is sent.
+- Credentials embedded in target URLs are rejected.
 
-Build the repository-local CLI, then provide an API URL ending in `/v1`, a bearer token, and the collection ID:
+Public HTTP endpoints may be enabled explicitly for trusted development or mock
+targets:
+
+```bash
+ALLOW_INSECURE_HTTP_TARGETS=true
+```
+
+This option does not permit private-network targets. Never send production
+credentials or sensitive payloads over HTTP.
+
+## Schedules and failure webhooks
+
+Schedules use BullMQ cron expressions and IANA timezones. Active-run uniqueness
+prevents overlapping scheduled executions for the same collection.
+
+Failure notification endpoints and signing secrets are encrypted. Deliveries:
+
+- Use HTTPS only.
+- Reject redirects and private-network targets.
+- Time out after ten seconds.
+- Retry up to three times.
+- Record response status, duration, and error details.
+
+Webhook requests include:
+
+| Header | Meaning |
+| --- | --- |
+| `x-api-sentinel-event` | Stable event type, currently `collection.run.failed`. |
+| `x-api-sentinel-event-id` | Stable identifier suitable for consumer deduplication. |
+| `x-api-sentinel-signature` | Optional `sha256=<hex>` HMAC-SHA256 signature of the exact body. |
+
+Consumers should deduplicate by event ID and return any `2xx` response to
+acknowledge delivery.
+
+## CLI and CI integration
+
+Build the repository CLI:
 
 ```bash
 npm ci
 npm run build -w @api-sentinel/cli
+```
 
+Run a collection and wait for its terminal result:
+
+```bash
 export API_SENTINEL_URL=https://sentinel.example.com/v1
 export API_SENTINEL_TOKEN=replace-with-a-private-token
+
 node apps/cli/dist/index.js run \
   --collection COLLECTION_ID \
   --timeout 120 \
   --output pretty
 ```
 
-Use `--output json` to emit a stable `schemaVersion: "1.0"` report containing run metadata, aggregate counts, and per-request results. Keep the token in a CI secret; do not put it in arguments, logs, repository variables, or committed workflow files. Supported exit codes are:
+Use `--output json` for a stable `schemaVersion: "1.0"` report.
 
 | Exit code | Meaning |
 | --- | --- |
-| `0` | The collection finished with `PASSED`. |
+| `0` | The collection completed with `PASSED`. |
 | `1` | The collection ran successfully but one or more checks failed. |
-| `2` | Configuration, authentication, API, network, or timeout error. |
+| `2` | Configuration, authentication, API, network, or timeout failure. |
 
-The manually triggered example at [`.github/workflows/api-sentinel-example.yml`](./.github/workflows/api-sentinel-example.yml) reads `API_SENTINEL_TOKEN` from GitHub Actions secrets, uploads the JSON report as an artifact, and fails the job when the collection fails. For branch protection, adapt its `workflow_dispatch` trigger to `pull_request` after assigning a stable collection and API URL.
+Store `API_SENTINEL_TOKEN` in the CI provider's secret store. Do not place it in
+command arguments, repository variables, committed workflow files, or logs.
 
-## Environment secrets
+The example workflow at
+[`.github/workflows/api-sentinel-example.yml`](./.github/workflows/api-sentinel-example.yml)
+runs manually, uploads the JSON report, and maps API Sentinel's exit code to the
+job result. Adapt it to `pull_request` after assigning a stable collection and
+API URL.
 
-Each project environment can store write-only secrets such as `token` or `apiKey`. Reference them in request headers or bodies with `{{token}}`. Values are encrypted with AES-256-GCM before persistence, are never returned by read endpoints, are decrypted only during execution, and are redacted from stored execution errors.
+## Development
 
-Environment names and base URLs can be edited from the workspace. Collections
-linked to that environment automatically use its updated base URL; secrets and
-historical run records remain attached to their existing environment and runs.
+### Run application services in Docker
 
-Production requires a unique 32-byte encryption key encoded as 64 hexadecimal characters:
+Use the [quick start](#quick-start-with-docker) for the most reproducible local
+environment.
 
-```bash
-ENCRYPTION_KEY=replace-with-64-random-hex-characters
-```
+### Run Node.js services on the host
 
-Keep this key outside Git and back it up in a secret manager. Losing it makes existing secrets unrecoverable; changing it requires a controlled key-rotation migration.
-
-The runner blocks localhost, private-network, link-local, and cloud-metadata targets, disallows redirects, and enforces a ten-second timeout.
-
-The API limits request bodies to 2 MiB and uses Redis-backed rate limiting so limits remain consistent across API replicas. The default is 300 requests per source IP per minute; register/login are restricted to 10 per minute. Configure the global ceiling with `RATE_LIMIT_MAX`. Only set `TRUST_PROXY=true` behind a trusted reverse proxy such as the included production Caddy service—never on a directly exposed API port.
-
-HTTPS is required by default. Developer teams can explicitly support public HTTP staging or mock targets by setting the following environment variable:
+The development overlay publishes PostgreSQL and Redis on loopback only:
 
 ```bash
-ALLOW_INSECURE_HTTP_TARGETS=true
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.development.yml \
+  up -d postgres redis
 ```
 
-Only enable this for targets you trust. HTTP is unencrypted, so it must not be used with production credentials, secrets, or sensitive response data. The restriction against private networks remains active even when HTTP is enabled.
-
-## Production containers
+Change the gitignored `.env` values to:
 
 ```bash
-docker compose build api
-docker compose up -d postgres redis
-docker compose run --rm api npx prisma migrate deploy
-docker compose up -d api worker web
-curl http://localhost:3001/v1/health
+DATABASE_URL=postgresql://api_sentinel:api_sentinel@localhost:5432/api_sentinel?schema=public
+REDIS_URL=redis://localhost:6379
+NEXT_PUBLIC_API_URL=http://localhost:3001/v1
+APP_ORIGIN=http://localhost:3000
 ```
 
-PostgreSQL and Redis are available only inside the Compose network. Put a TLS reverse proxy in front of ports `3000` and `3001` before using production credentials over a public network. Set `ALLOW_INSECURE_HTTP_TARGETS=false` in production unless a public HTTP target is an explicit requirement.
+Then install dependencies, migrate, and start the API and dashboard in separate
+terminals:
 
-The API starts at `http://localhost:3001`. Its interactive API documentation is at `/documentation`.
+```bash
+npm ci
+npm run db:generate -w @api-sentinel/api
+npm run db:migrate -w @api-sentinel/api
+npm run dev -w @api-sentinel/api
+```
 
-### Custom domain and automatic HTTPS
+```bash
+npm run dev -w @api-sentinel/web
+```
 
-The production override runs Caddy as the only public entry point and removes direct host bindings for the web and API containers. Caddy routes `/v1/*` and `/documentation*` to Fastify, routes everything else to Next.js, adds baseline security headers, redirects HTTP to HTTPS, and persists certificate state.
+Start the worker in another terminal after building the API:
 
-1. Create a DNS `A` record for your subdomain pointing to the VPS public IPv4 address. Keep it **DNS only** until the origin certificate has been issued.
-2. Allow inbound TCP `80` and TCP/UDP `443` in the VPS and provider firewalls.
-3. Set `APP_DOMAIN` in the gitignored `.env` file, for example:
+```bash
+npm run build -w @api-sentinel/api
+node apps/api/dist/worker.js
+```
+
+## Testing and quality gates
+
+Run the static and unit-test suite:
+
+```bash
+npm run lint
+npm run typecheck
+npm test
+npm run build
+npm run check:scripts
+```
+
+Run the first-value browser workflow in an isolated Compose project:
+
+```bash
+test -f .env || cp .env.example .env
+npx playwright install --with-deps chromium
+npm run test:e2e:stack
+```
+
+The Chromium test covers:
+
+- Registration, server-side logout revocation, and login.
+- Organization and project creation.
+- Environment creation and editing.
+- OpenAPI import.
+- Collection and request creation.
+- Worker execution and a passing result.
+
+The wrapper uses ports `3100` and `3101`, prints service logs on failure, and
+always removes only its isolated containers, network, and PostgreSQL volume.
+
+GitHub Actions runs two required jobs:
+
+| Job | Coverage |
+| --- | --- |
+| `verify` | Install, lint, type-check, unit tests, build, and shell syntax validation. |
+| `e2e` | Chromium, isolated Docker stack, migrations, worker execution, and report artifact. |
+
+## Production self-hosting
+
+The production Compose overlay:
+
+- Publishes only ports `80` and `443` through Caddy.
+- Keeps the API, web, PostgreSQL, and Redis ports private.
+- Obtains and renews a publicly trusted TLS certificate.
+- Routes `/v1/*` and `/documentation*` to Fastify.
+- Routes all other requests to Next.js.
+- Adds baseline browser security headers.
+
+### Prerequisites
+
+1. Point a DNS `A` or `AAAA` record at the server.
+2. Allow inbound TCP `80`, TCP `443`, and optionally UDP `443` for HTTP/3.
+3. Set production values in the gitignored `.env`:
 
    ```bash
+   NODE_ENV=production
    APP_DOMAIN=sentinel.example.com
+   ENCRYPTION_KEY=replace-with-64-random-hex-characters
+   ALLOW_INSECURE_HTTP_TARGETS=false
+   LOG_LEVEL=info
    ```
 
-4. Run the guarded production deployment:
+4. Deploy using the guarded release script:
 
    ```bash
-   npm run deploy:production
+   bash scripts/deploy-production.sh
    ```
 
-   The script validates Compose configuration, always builds with the
-   production overlay, applies migrations, starts services, verifies the HTTPS
-   health and workspace endpoints, and rejects any web bundle containing the
-   localhost API URL. On failure it prints recent API/web/Caddy logs and exits
-   non-zero. The web API URL is embedded during image build, so production web
-   images must never be built with only the base Compose file.
+   If Node.js and npm are already installed, `npm run deploy:production` is an
+   equivalent convenience command.
 
-5. If Cloudflare proxying is desired, enable the orange-cloud proxy only after direct HTTPS succeeds, then select **SSL/TLS → Full (strict)**. Never use Flexible mode because it leaves the Cloudflare-to-origin connection unencrypted and can create redirect loops.
+The deployment command:
 
-Caddy requires the domain to resolve to the VPS, public ports 80/443, and persistent `/data` storage; it then obtains, renews, and serves certificates automatically. See the [Caddy automatic HTTPS requirements](https://caddyserver.com/docs/automatic-https) and [Cloudflare Full (strict) requirements](https://developers.cloudflare.com/ssl/origin-configuration/ssl-modes/full-strict/).
+1. Validates the merged Compose configuration.
+2. Builds API and web images with the production overlay.
+3. Applies pending Prisma migrations.
+4. Recreates services without exposing internal ports.
+5. Retries public HTTPS health and workspace checks during startup.
+6. Rejects a browser bundle containing the localhost API URL.
+7. Prints recent API, web, and Caddy logs when deployment fails.
 
-After HTTPS is active, use only the domain URL in tokens, CLI configuration, and browser sessions. Rotate any VPS password or token ever pasted into chat/history, prefer SSH keys, and disable password SSH authentication after confirming key access.
+If a CDN or DNS proxy is placed in front of Caddy, use end-to-end strict TLS.
+Never use a mode that terminates TLS at the proxy and sends unencrypted HTTP to
+the origin.
 
-The reference VPS deployment is live at `https://sentinel.zahidabdillah.dev`
-while its host is online; its API health endpoint is
-`https://sentinel.zahidabdillah.dev/v1/health` and interactive API
-documentation is available under `/documentation`. It is not a dependency for
-local or independently self-hosted installations.
+## Configuration reference
 
-## MVP capabilities
+| Variable | Required | Description |
+| --- | --- | --- |
+| `NODE_ENV` | Yes in production | `development`, `test`, or `production`. |
+| `PORT` | No | Fastify port; defaults to `3001`. |
+| `POSTGRES_PASSWORD` | Docker | Password used to initialize the Compose PostgreSQL service. |
+| `DATABASE_URL` | Yes | PostgreSQL connection URL used by API, worker, and Prisma. |
+| `REDIS_URL` | Yes | Redis connection URL used for rate limits, queues, and schedules. |
+| `APP_ORIGIN` | Yes | Allowed browser origin for CORS. Production Compose derives it from `APP_DOMAIN`. |
+| `APP_DOMAIN` | Production | Hostname used by Caddy; do not include a scheme or path. |
+| `TRUST_PROXY` | Production proxy only | Trust proxy-derived client addresses; production Compose enables it behind Caddy. |
+| `RATE_LIMIT_MAX` | No | Global requests per source IP per minute; defaults to `300`. |
+| `ENCRYPTION_KEY` | Production | Unique 32-byte key encoded as 64 hexadecimal characters. |
+| `NEXT_PUBLIC_API_URL` | Web build | Browser-visible API URL embedded during the Next.js build. |
+| `ALLOW_INSECURE_HTTP_TARGETS` | No | Permit trusted public HTTP targets; defaults to `false`. |
+| `LOG_LEVEL` | No | Pino log level; defaults to `info`. |
 
-- Organizations, projects, and project-scoped access controls
-- OpenAPI 3.0/3.1 validation and immutable version imports
-- Breaking-change reports between specification versions
-- Collection test execution with safe outbound-request controls
-- Durable queued execution in a separately scalable worker
-- Cron-based collection schedules with timezone and overlap protection
-- Encrypted, signed failure webhooks with retry history
-- Project reliability metrics and cursor-paginated run history
-- Configurable run retention and project-scoped audit events
-- CI-friendly collection runner CLI with versioned JSON reports and deterministic exit codes
-- Health endpoint and structured error responses
+## Operations and troubleshooting
 
-See [plan.md](./plan.md), [architecture.md](./architecture.md), and [design.md](./design.md) for the product blueprint.
+Inspect service state:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.production.yml ps
+```
+
+Inspect recent logs:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.production.yml \
+  logs --tail=200 api worker web caddy
+```
+
+Check migration state:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.production.yml \
+  run --rm api npx prisma migrate status
+```
+
+Common failure modes:
+
+| Symptom | Check |
+| --- | --- |
+| Browser reports `Failed to fetch` | Confirm HTTPS health, CORS origin, and that the web image was built with the production overlay. |
+| Caddy cannot obtain a certificate | Verify DNS, ports 80/443, server clock, and that no other process owns the ports. |
+| A run remains queued | Inspect Redis and worker health, then check worker logs. |
+| Target rejected as unsafe | Use a public hostname and verify it does not resolve to loopback, private, link-local, or metadata addresses. |
+| Secrets cannot be decrypted | Confirm the original `ENCRYPTION_KEY` is present and unchanged. |
+| Migration fails | Stop the rollout, inspect `prisma migrate status`, and do not manually edit migration history. |
+
+## Security model
+
+- All API inputs are validated at the boundary.
+- Authorization is enforced by organization/project relationships on the
+  server.
+- Authentication endpoints have stricter Redis-backed rate limits.
+- Request bodies are limited to 2 MiB.
+- Session tokens are random, stored only as hashes, revocable, and expire.
+- Environment and webhook secrets use authenticated encryption.
+- Sensitive headers and configured values are redacted from persisted errors.
+- Outbound requests are isolated in the worker and pass URL, protocol, and DNS
+  safety checks before execution.
+- Production uses same-origin HTTPS with private backend ports.
+- Audit events avoid full webhook URLs, encrypted values, and plaintext secrets.
+
+Security-sensitive deployments should additionally provide external database
+backups, secret-manager integration, infrastructure monitoring, and periodic
+restore rehearsals.
+
+## Repository layout
+
+```text
+apps/
+  api/          Fastify API, Prisma schema, migrations, and worker entrypoint
+  cli/          CI-oriented collection runner
+  web/          Next.js dashboard
+e2e/            Playwright browser workflows
+scripts/        Guarded deployment and isolated E2E orchestration
+docker-compose*.yml
+                Local, production, development, and E2E service definitions
+```
+
+## Project documentation
+
+- [Delivery plan](./plan.md)
+- [Architecture](./architecture.md)
+- [Product and UI design](./design.md)
+
+The delivery plan distinguishes completed MVP behavior from planned production
+hardening. Architecture and design documents describe the intended direction;
+they should not be interpreted as claims that every target capability has
+already shipped.

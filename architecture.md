@@ -4,10 +4,9 @@
 
 The repository currently runs `web` (Next.js), `api` (Fastify), and a separately scalable BullMQ `worker`, with private PostgreSQL and Redis dependencies. The API authorizes and queues runs; only the worker executes user-configured target requests.
 
-The architecture is deployment-independent. Local Docker, the public reference
-VPS, and third-party self-hosted installations run the same services and own
-their own PostgreSQL data. No installation depends on the availability or IP
-address of the reference VPS.
+The architecture is deployment-independent. Local Docker and self-hosted
+installations run the same services and own their own PostgreSQL data. An
+installation has no dependency on a central hosted service.
 
 | Capability | Current implementation | Target production design |
 | --- | --- | --- |
@@ -151,11 +150,5 @@ browser bundle to reject an accidentally embedded localhost API endpoint.
 Browser E2E uses a separate Compose project, network, PostgreSQL volume, and
 host ports. Chromium verifies the first-value workflow through the UI while the
 real worker processes the queued run; teardown removes only the isolated test
-resources. CI therefore exercises the same service boundaries as self-hosted
-installations without depending on the reference VPS.
-
-The optional reference deployment serves a publicly trusted certificate for
-`sentinel.zahidabdillah.dev` while its VPS is online; PostgreSQL, Redis, API port
-3001, and web port 3000 remain private to the Compose network. Local and other
-self-hosted installations remain fully independent if this reference instance
-is stopped, moved to a new IP address, or retired.
+resources. CI therefore exercises the same service boundaries as a self-hosted
+installation without depending on an external environment.
