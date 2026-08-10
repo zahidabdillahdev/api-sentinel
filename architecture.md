@@ -10,7 +10,7 @@ installation has no dependency on a central hosted service.
 
 | Capability | Current implementation | Target production design |
 | --- | --- | --- |
-| Execution | BullMQ worker with queue isolation and retries | Cancellation, quotas, and workload classes |
+| Execution | BullMQ worker, retries, and atomic organization active-run quota | Cancellation, usage budgets, and workload classes |
 | State | Durable `QUEUED`/`RUNNING`/terminal state machine | Heartbeats and stale-run recovery |
 | Secrets | AES-256-GCM environment secrets using a deployment key | Managed-key envelope encryption and rotation |
 | Storage | PostgreSQL documents and results | PostgreSQL plus object storage for bounded artifacts |
@@ -19,6 +19,12 @@ installation has no dependency on a central hosted service.
 Collection schedules use BullMQ Job Schedulers keyed by the database schedule ID. The worker creates a new durable execution per occurrence; a partial unique index blocks overlapping `QUEUED`/`RUNNING` executions for the same schedule.
 
 Notification rules belong to a collection. The worker evaluates enabled rules after a terminal failed run, decrypts the endpoint only in memory, signs a stable minimal payload with HMAC-SHA256 when configured, and persists one delivery record per attempt. Stable event IDs let consumers deduplicate retries.
+
+Active-run admission is scoped to an organization. API-triggered and scheduled
+runs acquire a PostgreSQL transaction advisory lock, count `QUEUED` and
+`RUNNING` executions, and admit work only below the configured limit. This
+keeps the quota consistent across API replicas and workers without relying on
+process-local counters.
 
 Project overview metrics are computed from PostgreSQL on demand with project-scoped relation filters. Run history uses stable execution IDs as cursors, validates that every cursor belongs to the authorized collection, and keeps payload size bounded with a maximum page size of 50.
 
@@ -33,7 +39,7 @@ Browser → Next.js dashboard → Fastify API → PostgreSQL
                                                         └→ webhook endpoint
 ```
 
-The API rejects loopback, private, link-local, and cloud-metadata targets. HTTPS is required by default; public HTTP is an explicit environment-level development/staging exception and never permits private-network targets.
+The API rejects loopback, private, link-local, and cloud-metadata targets. HTTPS is required by default; public HTTP is an explicit deployment-level development/staging exception and never permits private-network targets.
 
 Fastify enforces a 2 MiB body ceiling and Redis-backed per-IP rate limits, with stricter authentication-route limits. Proxy-derived client addresses are trusted only when the explicit production proxy setting is enabled.
 
@@ -47,8 +53,8 @@ Fastify enforces a 2 MiB body ceiling and Redis-backed per-IP rate limits, with 
 | Database | PostgreSQL | Reliable relational data, JSONB for specification documents, and strong indexing. |
 | Queue / scheduler | Redis + BullMQ | Durable asynchronous work, retries, delayed jobs, and worker separation. |
 | ORM / migrations | Prisma | Type-safe data access and repeatable schema migrations. |
-| Validation | Zod + OpenAPI parser | Runtime validation at the boundary and predictable OpenAPI handling. |
-| Observability | OpenTelemetry + Sentry | Portable traces/metrics plus actionable error monitoring. |
+| Validation | Zod plus focused OpenAPI helpers | Runtime request validation and explicit MVP contract rules. |
+| Observability | Structured Pino logs | Portable tracing and error monitoring remain target capabilities. |
 
 ## Target system context
 
@@ -80,7 +86,7 @@ The repository-local CLI is a thin API client: it never executes target requests
 | Projects | Project settings, environments, API ownership, retention, and quotas. |
 | Specifications | Raw OpenAPI documents, validation, parsed endpoint metadata, versions, and comparisons. |
 | Collections | Requests, variables, assertions, environments, and secrets references. |
-| Executions | Queued runs, per-request results, retries, durations, and failure artifacts. |
+| Executions | Queued runs, per-request results, retries, durations, and failure details. |
 | Automation | Schedules, alert policies, notifications, and delivery attempts. |
 
 ## Data model
@@ -91,19 +97,22 @@ Organization 1---* Project
 Project      1---* Environment
 Project      1---* AuditEvent *---0..1 User
 Project      1---* Specification 1---* SpecificationVersion
-Project      1---* Collection 1---* TestRequest 1---* Assertion
+Project      1---* Collection 1---* TestRequest
 Collection   1---* Schedule
-ExecutionRun 1---* RequestResult 1---* AssertionResult
+ExecutionRun 1---* RequestResult *---1 TestRequest
+TestRequest  1---* StatusAssertion
 Collection   1---* NotificationRule 1---* WebhookDelivery *---1 ExecutionRun
-Organization 1---* AuditEvent
 ```
 
 Important storage rules:
 
-- Specification versions are immutable; each stores the original source and normalized document.
+- Specification versions are immutable and store the imported JSON document
+  plus extracted title and API version metadata.
 - Secrets are encrypted before persistence and never returned in plaintext after creation.
-- Request and response bodies have configurable size and retention limits; sensitive headers and JSON paths are redacted before persistence.
-- Execution data belongs to a project and is always queried through organization-scoped authorization.
+- Target response bodies and headers are not persisted; results retain status,
+  duration, pass/fail state, and redacted error text.
+- Execution data belongs to a project through its collection and read routes
+  enforce organization-scoped authorization.
 - Audit metadata excludes encrypted values and write-only secret material.
 
 ## Target execution flow
@@ -115,30 +124,49 @@ Important storage rules:
 5. The worker marks the run terminal, emits metrics, and evaluates matching alert rules.
 6. The UI polls or receives a server-sent event update and renders the result.
 
-## Breaking-change analysis
+## Current breaking-change analysis
 
-The diff engine normalizes two OpenAPI documents into a canonical endpoint and schema graph. It flags changes such as removed operations, removed response codes, newly required fields, narrowed enum values, incompatible type changes, removed parameters, and stricter validation constraints. Each finding has a severity, a stable identifier, a location, and a human explanation.
+The focused diff engine compares operations and component schemas. It detects
+removed operations, response codes, parameters, and schemas; newly required
+parameters and schema properties; and newly added operations. Each finding has
+a severity, stable code, location, and explanation. Reference resolution,
+canonical normalization, enum narrowing, type compatibility, and constraint
+analysis remain planned.
 
-## Security boundaries
+## Current security boundaries
 
 - Authenticate every API and CLI request; enforce organization/project role checks server-side.
-- Use short-lived signed worker jobs, idempotency keys, and explicit request ownership.
 - Block requests to loopback, link-local, private-network, and cloud metadata ranges by default to limit SSRF.
-- Restrict redirects, DNS rebinding, response size, concurrency, request method, and execution duration.
-- Encrypt secrets with a managed key; redact `Authorization`, cookies, API keys, and configurable values in logs/results.
+- Reject redirects, preflight DNS results, require HTTPS by default, and enforce
+  a ten-second execution timeout.
+- Encrypt write-only secrets with a deployment key and redact resolved values
+  from persisted execution errors.
 - Rate-limit public endpoints, hash tokens, maintain audit trails, and validate all payloads.
+- Serialize organization quota admission in PostgreSQL before adding work to the queue.
 
-## Reliability and operations
+Managed-key rotation, DNS pinning, bounded response reads, cancellation, and
+signed/idempotent worker job envelopes remain planned hardening work.
 
-- API instances are stateless and scale horizontally; workers scale independently by queue concurrency.
-- PostgreSQL is the system of record; Redis is disposable queue/cache infrastructure with monitored persistence.
-- Jobs use exponential retry for transient failures, dead-letter handling for exhausted attempts, and idempotent result writes.
-- Health endpoints cover API, database, Redis, and worker heartbeat. Alerts cover error rate, queue latency, failed jobs, and database capacity.
-- Back up PostgreSQL daily with point-in-time recovery; test restoration before production launch.
+## Current reliability and operations
+
+- API state is externalized to PostgreSQL and Redis; the worker has independent
+  queue concurrency.
+- PostgreSQL is the system of record. Redis carries rate-limit state, queues,
+  schedules, and maintenance jobs.
+- Jobs use bounded exponential retries and retain failed queue entries for
+  diagnosis.
+- The health endpoint verifies the API process and PostgreSQL connection.
+
+Worker heartbeats, stale-run recovery, queue/database dashboards, alerting,
+automated backups, point-in-time recovery, and restore rehearsals remain the
+next operational milestone.
 
 ## Deployment
 
-Use separate containers for web, API, and worker. Deploy preview environments for pull requests, then promote immutable images to staging and production through GitHub Actions. Managed PostgreSQL, managed Redis, encrypted object storage, and a secret manager are required in production.
+The repository ships separate web, API, and worker containers plus PostgreSQL,
+Redis, and Caddy Compose services. Preview environments, image promotion,
+managed data services, and secret-manager integration are recommended future
+deployment improvements rather than current repository automation.
 
 The included production Compose overlay adds Caddy as the TLS boundary and removes direct API/web host ports. Caddy uses one same-origin hostname, sends API/documentation paths to Fastify, sends application paths to Next.js, persists ACME material, and emits structured access logs. New installations must activate DNS before starting this overlay.
 

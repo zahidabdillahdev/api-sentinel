@@ -15,6 +15,12 @@ const configSchema = z
       .default("false")
       .transform((value) => value === "true"),
     RATE_LIMIT_MAX: z.coerce.number().int().min(10).max(10_000).default(300),
+    MAX_ACTIVE_RUNS_PER_ORGANIZATION: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(10_000)
+      .default(20),
     ENCRYPTION_KEY: z.preprocess(
       (value) => (value === "" ? undefined : value),
       z.string().regex(/^[a-f0-9]{64}$/i).optional(),

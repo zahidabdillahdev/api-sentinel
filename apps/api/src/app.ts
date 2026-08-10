@@ -26,6 +26,41 @@ export async function buildApp() {
     trustProxy: config.TRUST_PROXY,
     bodyLimit: 2 * 1024 * 1024,
   });
+  app.setErrorHandler((error, request, reply) => {
+    request.log.error(error);
+    if (error instanceof ZodError)
+      return reply
+        .code(400)
+        .send({
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "Invalid request",
+            details: error.flatten(),
+          },
+        });
+    if (error instanceof AppError)
+      return reply
+        .code(error.statusCode)
+        .send({
+          error: {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+          },
+        });
+    if ((error as { statusCode?: number }).statusCode === 429)
+      return reply.code(429).send({
+        error: {
+          code: "RATE_LIMITED",
+          message: "Too many requests; retry later",
+        },
+      });
+    return reply
+      .code(500)
+      .send({
+        error: { code: "INTERNAL_ERROR", message: "Unexpected server error" },
+      });
+  });
   await app.register(cors, { origin: config.APP_ORIGIN, credentials: true });
   const rateLimitRedis = new Redis(config.REDIS_URL, {
     connectTimeout: 5_000,
@@ -64,40 +99,5 @@ export async function buildApp() {
   await app.register(collectionRoutes, { prefix: "/v1" });
   await app.register(projectRoutes, { prefix: "/v1" });
   await app.register(specificationRoutes, { prefix: "/v1" });
-  app.setErrorHandler((error, request, reply) => {
-    request.log.error(error);
-    if (error instanceof ZodError)
-      return reply
-        .code(400)
-        .send({
-          error: {
-            code: "VALIDATION_ERROR",
-            message: "Invalid request",
-            details: error.flatten(),
-          },
-        });
-    if (error instanceof AppError)
-      return reply
-        .code(error.statusCode)
-        .send({
-          error: {
-            code: error.code,
-            message: error.message,
-            details: error.details,
-          },
-        });
-    if ((error as { statusCode?: number }).statusCode === 429)
-      return reply.code(429).send({
-        error: {
-          code: "RATE_LIMITED",
-          message: "Too many requests; retry later",
-        },
-      });
-    return reply
-      .code(500)
-      .send({
-        error: { code: "INTERNAL_ERROR", message: "Unexpected server error" },
-      });
-  });
   return app;
 }

@@ -1,4 +1,11 @@
 import { expect, test } from "@playwright/test";
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
+
+test.afterAll(async () => {
+  await prisma.$disconnect();
+});
 
 const openApiDocument = JSON.stringify(
   {
@@ -92,4 +99,135 @@ test("developer can complete the first-value workspace flow", async ({ page }) =
   await expect(
     collectionPanel.getByText("PASSED", { exact: true }).first(),
   ).toBeVisible({ timeout: 45_000 });
+
+  await collectionPanel.getByLabel("Request name").fill("Intentional failure");
+  await collectionPanel.getByLabel("Public HTTPS URL").fill("https://example.com/");
+  await collectionPanel.getByLabel("Expected status").fill("418");
+  await collectionPanel.getByRole("button", { name: "Add request" }).click();
+  await collectionPanel.getByRole("button", { name: "Run collection" }).click();
+  await expect(
+    collectionPanel.getByText("FAILED", { exact: true }).first(),
+  ).toBeVisible({ timeout: 45_000 });
+  await expect(
+    collectionPanel.getByText(/Expected status 418, received 200/).first(),
+  ).toBeVisible();
+});
+
+test("viewer access and organization run quota are enforced", async ({
+  request,
+}) => {
+  const apiUrl = process.env.PLAYWRIGHT_API_URL ?? "http://127.0.0.1:3101/v1";
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const password = `safe-e2e-password-${suffix}`;
+
+  async function register(email: string, name: string) {
+    const response = await request.post(`${apiUrl}/auth/register`, {
+      data: { email, name, password },
+    });
+    expect(response.status()).toBe(201);
+    return (await response.json()) as { token: string };
+  }
+
+  const owner = await register(`owner-${suffix}@example.invalid`, "E2E Owner");
+  const viewer = await register(`viewer-${suffix}@example.invalid`, "E2E Viewer");
+  const ownerHeaders = { authorization: `Bearer ${owner.token}` };
+  const viewerHeaders = { authorization: `Bearer ${viewer.token}` };
+
+  const organizationResponse = await request.post(`${apiUrl}/organizations`, {
+    headers: ownerHeaders,
+    data: { name: `Quota Organization ${suffix}` },
+  });
+  expect(organizationResponse.status()).toBe(201);
+  const organization = (await organizationResponse.json()) as { id: string };
+
+  const projectResponse = await request.post(
+    `${apiUrl}/organizations/${organization.id}/projects`,
+    {
+      headers: ownerHeaders,
+      data: { name: `Quota API ${suffix}` },
+    },
+  );
+  expect(projectResponse.status()).toBe(201);
+  const project = (await projectResponse.json()) as { id: string };
+
+  const invitationResponse = await request.post(
+    `${apiUrl}/organizations/${organization.id}/invitations`,
+    {
+      headers: ownerHeaders,
+      data: { email: `viewer-${suffix}@example.invalid`, role: "VIEWER" },
+    },
+  );
+  expect(invitationResponse.status()).toBe(201);
+  const invitation = (await invitationResponse.json()) as { token: string };
+  const acceptanceResponse = await request.post(
+    `${apiUrl}/invitations/${invitation.token}/accept`,
+    { headers: viewerHeaders, data: {} },
+  );
+  expect(acceptanceResponse.status()).toBe(200);
+
+  const collectionResponse = await request.post(
+    `${apiUrl}/projects/${project.id}/collections`,
+    {
+      headers: ownerHeaders,
+      data: { name: "Quota checks" },
+    },
+  );
+  expect(collectionResponse.status()).toBe(201);
+  const collection = (await collectionResponse.json()) as { id: string };
+
+  const requestResponse = await request.post(
+    `${apiUrl}/collections/${collection.id}/requests`,
+    {
+      headers: ownerHeaders,
+      data: {
+        name: "Example health",
+        method: "GET",
+        url: "https://example.com/",
+        expectedStatus: 200,
+      },
+    },
+  );
+  expect(requestResponse.status()).toBe(201);
+
+  const viewerRead = await request.get(
+    `${apiUrl}/projects/${project.id}/collections`,
+    { headers: viewerHeaders },
+  );
+  expect(viewerRead.status()).toBe(200);
+
+  const viewerWrite = await request.post(
+    `${apiUrl}/projects/${project.id}/collections`,
+    {
+      headers: viewerHeaders,
+      data: { name: "Unauthorized collection" },
+    },
+  );
+  expect(viewerWrite.status()).toBe(403);
+  expect((await viewerWrite.json()).error.code).toBe("FORBIDDEN");
+
+  const viewerRun = await request.post(
+    `${apiUrl}/collections/${collection.id}/runs`,
+    { headers: viewerHeaders, data: {} },
+  );
+  expect(viewerRun.status()).toBe(403);
+  expect((await viewerRun.json()).error.code).toBe("FORBIDDEN");
+
+  const activeRun = await prisma.executionRun.create({
+    data: { collectionId: collection.id, status: "QUEUED" },
+  });
+  const viewerRunRead = await request.get(`${apiUrl}/runs/${activeRun.id}`, {
+    headers: viewerHeaders,
+  });
+  expect(viewerRunRead.status()).toBe(200);
+
+  const quotaResponse = await request.post(
+    `${apiUrl}/collections/${collection.id}/runs`,
+    { headers: ownerHeaders, data: {} },
+  );
+  expect(quotaResponse.status()).toBe(429);
+  const quotaBody = await quotaResponse.json();
+  expect(quotaBody.error).toMatchObject({
+    code: "ACTIVE_RUN_QUOTA_EXCEEDED",
+    details: { limit: 1, scope: "organization" },
+  });
 });

@@ -19,7 +19,7 @@ questions:
 | Team workspace | Organizations, projects, invitations, sessions, and project-scoped roles. |
 | API contracts | OpenAPI 3.x JSON import, immutable versions, API reference, and focused breaking-change reports. |
 | API checks | Collections, environments, request payloads, encrypted variables, and status/header/JSON/latency assertions. |
-| Execution | Durable BullMQ jobs, retries, run history, failure details, and a separately scalable worker. |
+| Execution | Durable BullMQ jobs, retries, organization-scoped active-run quotas, run history, and a separately scalable worker. |
 | Automation | Cron schedules, overlap protection, signed failure webhooks, retry history, and retention controls. |
 | Developer tooling | CI-friendly CLI, stable JSON output, deterministic exit codes, and a GitHub Actions example. |
 | Operations | Redis-backed rate limits, audit events, HTTPS ingress, guarded deployment, and browser E2E coverage. |
@@ -198,6 +198,11 @@ QUEUED → RUNNING → PASSED
 The API persists the queued run before publishing its job. The dashboard polls
 the run, and the worker records status, duration, assertion outcome, and a
 readable failure reason for every request.
+
+Admission is limited per organization across both manual and scheduled runs.
+The check is serialized in PostgreSQL, so multiple API replicas and workers
+cannot bypass it with concurrent requests. Manual requests above the limit
+receive `429 ACTIVE_RUN_QUOTA_EXCEEDED`.
 
 ## Environments and secrets
 
@@ -380,9 +385,13 @@ The Chromium test covers:
 - OpenAPI import.
 - Collection and request creation.
 - Worker execution and a passing result.
+- Assertion failure details in the workspace.
+- Viewer read access with denied mutation attempts.
+- Active-run quota rejection against PostgreSQL.
 
-The wrapper uses ports `3100` and `3101`, prints service logs on failure, and
-always removes only its isolated containers, network, and PostgreSQL volume.
+The wrapper uses application ports `3100` and `3101` plus loopback-only
+PostgreSQL port `55432`, prints service logs on failure, and always removes only
+its isolated containers, network, and database volume.
 
 GitHub Actions runs two required jobs:
 
@@ -452,6 +461,7 @@ the origin.
 | `APP_DOMAIN` | Production | Hostname used by Caddy; do not include a scheme or path. |
 | `TRUST_PROXY` | Production proxy only | Trust proxy-derived client addresses; production Compose enables it behind Caddy. |
 | `RATE_LIMIT_MAX` | No | Global requests per source IP per minute; defaults to `300`. |
+| `MAX_ACTIVE_RUNS_PER_ORGANIZATION` | No | Maximum combined `QUEUED` and `RUNNING` executions per organization; defaults to `20`. |
 | `ENCRYPTION_KEY` | Production | Unique 32-byte key encoded as 64 hexadecimal characters. |
 | `NEXT_PUBLIC_API_URL` | Web build | Browser-visible API URL embedded during the Next.js build. |
 | `ALLOW_INSECURE_HTTP_TARGETS` | No | Permit trusted public HTTP targets; defaults to `false`. |

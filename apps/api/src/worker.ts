@@ -7,6 +7,10 @@ import { deliverFailureNotifications } from "./lib/webhook-notifications.js";
 import { cleanupExpiredRuns } from "./lib/retention.js";
 import { COLLECTION_RUN_QUEUE } from "./plugins/queue.js";
 import type { CollectionRunJob } from "./plugins/queue.js";
+import {
+  ActiveRunQuotaExceededError,
+  createQueuedRunWithinQuota,
+} from "./lib/run-quota.js";
 
 const prisma = new PrismaClient();
 const connection = new Redis(config.REDIS_URL, {
@@ -27,17 +31,28 @@ const worker = new Worker<CollectionRunJob>(
       });
       if (!schedule?.enabled) return;
       try {
-        const run = await prisma.executionRun.create({
-          data: {
-            collectionId: schedule.collectionId,
-            scheduleId: schedule.id,
-            status: "QUEUED",
-          },
+        const run = await createQueuedRunWithinQuota(prisma, {
+          collectionId: schedule.collectionId,
+          scheduleId: schedule.id,
+          maxActiveRuns: config.MAX_ACTIVE_RUNS_PER_ORGANIZATION,
         });
         runId = run.id;
         await job.updateData({ ...job.data, runId });
       } catch (error) {
         if ((error as { code?: string }).code === "P2002") return;
+        if (error instanceof ActiveRunQuotaExceededError) {
+          const rejectedRun = await prisma.executionRun.create({
+            data: {
+              collectionId: schedule.collectionId,
+              scheduleId: schedule.id,
+              status: "FAILED",
+              finishedAt: new Date(),
+              error: "Organization active run quota exceeded",
+            },
+          });
+          await deliverFailureNotifications(prisma, rejectedRun.id);
+          return;
+        }
         throw error;
       }
     }

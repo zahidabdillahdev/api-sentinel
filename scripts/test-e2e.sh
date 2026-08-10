@@ -44,4 +44,5 @@ curl --fail --silent --show-error \
 
 PLAYWRIGHT_BASE_URL=http://127.0.0.1:3100 \
 PLAYWRIGHT_API_URL=http://127.0.0.1:3101/v1 \
+DATABASE_URL=postgresql://api_sentinel:api_sentinel_e2e@127.0.0.1:55432/api_sentinel?schema=public \
   npm run test:e2e

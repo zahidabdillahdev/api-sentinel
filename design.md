@@ -2,7 +2,13 @@
 
 ## Current product surface
 
-The live MVP is intentionally a single workspace page while the information architecture below is the target navigation model. It currently supports account creation, returning-user sign-in, session-aware sign-out, organization/project selection, OpenAPI import/reference/version comparison, collection editing, on-demand runs, assertion feedback, run history, and OpenAPI-generated smoke tests.
+The MVP is intentionally a single workspace page while the information
+architecture below is the target navigation model. It currently supports
+account creation, sign-in/sign-out, organization/project selection,
+environment editing, pasted OpenAPI JSON import, reference/version comparison,
+collection editing, on-demand and scheduled runs, assertion feedback,
+paginated history, failure webhooks, reliability metrics, retention, and audit
+events.
 
 ### Current first-value workflow
 
@@ -25,7 +31,8 @@ Run collection → inspect assertion result and history
 - Smoke generation skips write methods and paths containing `{parameters}`.
 - A collection supports custom headers/body plus write-only environment secrets; a richer request composer and managed-key rotation UX remain planned.
 - Environment names and base URLs are editable in place; example form content is presented as placeholder guidance so demo values are never saved accidentally.
-- History shows the ten most recent runs in the workspace; pagination and metrics belong to the next dashboard iteration.
+- History loads ten runs at a time with cursor pagination, and the overview
+  summarizes the latest 24 hours.
 - Collections support cron schedules with IANA timezones and explicit active/paused states.
 - Collection failure webhooks show only the endpoint origin, keep URL/signing secret write-only, and expose the ten latest delivery attempts for diagnosis.
 - The project overview shows 24-hour pass rate, volume, failures, average latency, schedule coverage, and recent runs; collection history progressively loads older pages.
@@ -68,7 +75,8 @@ Organization switcher
 ### First value
 
 1. User creates a project and names its API.
-2. User uploads an OpenAPI file or enters a public/private URL.
+2. User pastes an OpenAPI JSON document. File upload and remote URL retrieval
+   are planned ingestion improvements.
 3. The import screen validates it, shows errors inline, and presents a concise endpoint summary.
 4. User lands on the API reference with a prompt to create a collection from an endpoint.
 5. User supplies a base URL/environment and runs the generated request.
@@ -140,7 +148,7 @@ Use a quiet, high-contrast technical interface: neutral surfaces, one blue actio
 - No test runs shows a compact explanation and an action to create a collection.
 - A network or service failure keeps the last successful result visible and offers a retry with an incident/reference ID.
 
-## Design deliverables before implementation
+## Next design deliverables
 
 1. Low-fidelity flows for import, collection creation, run inspection, and spec comparison.
 2. Responsive high-fidelity screens for the seven key screens above.

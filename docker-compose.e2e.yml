@@ -1,7 +1,17 @@
 services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: api_sentinel_e2e
+    ports: !override
+      - "127.0.0.1:55432:5432"
+
   api:
     environment:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://api_sentinel:api_sentinel_e2e@postgres:5432/api_sentinel?schema=public
+      REDIS_URL: redis://redis:6379
       APP_ORIGIN: http://127.0.0.1:3100
+      MAX_ACTIVE_RUNS_PER_ORGANIZATION: "1"
     ports: !override
       - "3101:3001"
 
@@ -11,3 +21,10 @@ services:
         NEXT_PUBLIC_API_URL: http://127.0.0.1:3101/v1
     ports: !override
       - "3100:3000"
+
+  worker:
+    environment:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://api_sentinel:api_sentinel_e2e@postgres:5432/api_sentinel?schema=public
+      REDIS_URL: redis://redis:6379
+      MAX_ACTIVE_RUNS_PER_ORGANIZATION: "1"

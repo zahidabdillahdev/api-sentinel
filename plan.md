@@ -18,7 +18,10 @@ must remain fully functional without relying on a central hosted service.
 
 ### Next engineering sequence
 
-1. Add request quotas, expand browser E2E into failure and authorization cases, and complete operational runbooks; the first-value Chromium E2E gate, guarded production deployment, Redis-backed rate limiting, and Caddy HTTPS are delivered.
+1. Complete stale-run recovery, response-size limits, backup/restore runbooks,
+   and broader audit coverage. Organization-scoped active-run quotas and browser
+   E2E coverage for assertion failure, viewer authorization, and quota rejection
+   are delivered in the current hardening increment.
 
 ## Product goal
 
@@ -36,12 +39,12 @@ API Sentinel is a team workspace for importing OpenAPI specifications, running A
 ## Release 1 target scope
 
 1. Organization, project, and member management with role-based access control.
-2. OpenAPI 3.x import from file or URL, validation, and version history.
+2. OpenAPI 3.x JSON import, validation, and version history.
 3. Readable API reference: endpoints, schemas, parameters, request bodies, and responses.
 4. API test collections with requests, variables, assertions, and environments.
 5. On-demand and scheduled test execution.
 6. Breaking-change comparison between specification versions.
-7. Run history, failure details, basic latency/error metrics, and email/webhook alerts.
+7. Run history, failure details, basic latency/error metrics, and webhook alerts.
 8. A CLI for running a collection in CI and reporting a machine-readable result.
 
 ## Explicitly deferred
@@ -57,19 +60,22 @@ API Sentinel is a team workspace for importing OpenAPI specifications, running A
 
 ### M0 — Foundation — substantially delivered
 
-- Establish TypeScript monorepo, linting, formatting, conventional commits, and CI.
+- Establish the TypeScript workspace, linting, conventional commits, and CI.
 - Add Docker Compose for PostgreSQL, Redis, API service, and worker.
 - Implement authentication, organizations, projects, and RBAC.
-- Create database migrations, seed data, structured logging, and error reporting.
+- Create database migrations, structured logging, and consistent error responses.
 
-**Exit condition:** a user can sign in, create a project, invite a member, and run the system locally and in a preview environment.
+**Exit condition:** a user can sign in, create a project, invite a member, and
+run the system locally or behind the included HTTPS production ingress.
 
 ### M1 — Specification workspace — substantially delivered
 
-- Implement OpenAPI upload and URL import.
-- Validate and normalize OpenAPI 3.x documents.
-- Persist immutable specification versions and parsed endpoint metadata.
-- Build the specification list, version detail page, and searchable API reference.
+- Implement pasted OpenAPI JSON import. **Delivered.** File upload and remote URL
+  retrieval remain planned ingestion options.
+- Validate the required OpenAPI 3.x document shape. **Delivered.** Full parser
+  validation, reference resolution, and normalization remain planned.
+- Persist immutable specification versions and extracted contract metadata.
+- Build the specification list, version detail view, and browsable API reference.
 
 **Exit condition:** a project has versioned, browsable API documentation with clear import failures.
 
@@ -85,7 +91,8 @@ API Sentinel is a team workspace for importing OpenAPI specifications, running A
 ### M3 — Automation and change safety — in progress
 
 - Add cron-like schedules with retry policies and execution locking. **Delivered.**
-- Compare two specification versions and classify breaking changes.
+- Compare two specification versions with a focused set of breaking and
+  non-breaking rules. **Delivered.** Broader compatibility coverage remains planned.
 - Create alert rules and generic webhook delivery with signed payloads and retry history. **Delivered.**
 - Add email delivery and richer alert routing policies.
 - Ship the CLI and a GitHub Actions example. **Delivered.**
@@ -96,10 +103,13 @@ API Sentinel is a team workspace for importing OpenAPI specifications, running A
 
 - Add audit logging and retention jobs. **Delivered for schedule, webhook, and retention configuration.**
 - Add Redis-backed global/authentication rate limiting. **Delivered.**
-- Add request quotas and expanded audit coverage.
+- Add organization-scoped active-run quotas. **Delivered.** Usage budgets and
+  per-request limits remain planned.
+- Expand audit coverage beyond retention, schedule, and webhook configuration.
 - Instrument API, worker, and external HTTP calls with OpenTelemetry.
 - Add backups, restore rehearsal, dashboards, and runbooks.
-- Complete accessibility, load, integration, and end-to-end tests.
+- Complete accessibility, load, and broader integration tests. First-value,
+  assertion-failure, viewer-RBAC, and quota E2E paths are delivered.
 - Serve production deployments through a custom domain with automatic HTTPS and private backend ports. **Delivered.**
 
 Project-scoped 24-hour reliability metrics and cursor-paginated collection history are delivered as the first M4 observability increment.
@@ -111,30 +121,27 @@ Project-scoped 24-hour reliability metrics and cursor-paginated collection histo
 ```text
 apps/
   web/                 Next.js dashboard
-  api/                 Fastify HTTP API
-  worker/              BullMQ execution and scheduled-job worker
+  api/                 Fastify API, Prisma schema, and BullMQ worker entrypoint
   cli/                 CI-friendly command-line client
-packages/
-  contracts/           Shared API schemas and generated types
-  openapi/             Parsing, validation, and diff engine
-  test-runner/         Request execution and assertion engine
-  ui/                  Reusable accessible React components
-  config/              Shared ESLint, TypeScript, and test configuration
-infra/
-  docker/              Local runtime files
-  github/              CI workflows and action examples
-docs/
+e2e/                   Playwright browser workflows
+scripts/               Deployment and E2E orchestration
+docker-compose*.yml    Local, development, production, and E2E stacks
+.github/workflows/     Verification, E2E, and CLI workflow example
 ```
 
 ## Quality gates
 
 - TypeScript strict mode; no unchecked `any` in application code.
-- Unit tests for parsers, diff classification, assertion evaluation, and authorization.
+- Unit tests for OpenAPI rules, assertions, encryption, redaction, retention,
+  metrics, authentication primitives, webhooks, and quota decisions.
 - Integration tests against PostgreSQL and Redis.
-- Playwright coverage for sign-in, import, test execution, and failure review.
-- The first Playwright Chromium path now covers sign-up/sign-in, revoked logout sessions, project/environment setup, OpenAPI import, collection execution, and a passing result; failure review and broader RBAC cases remain next.
-- Every pull request: formatting, linting, type checking, tests, build, dependency audit, and secret scan.
-- Main branch releases only from a passing, reviewed pull request.
+- Playwright covers sign-up/sign-in, revoked logout sessions,
+  project/environment setup, OpenAPI import, passing and failing execution,
+  viewer authorization, and active-run quota rejection.
+- Every pull request and push to `main`: linting, type checking, unit tests,
+  production builds, shell validation, and isolated Chromium E2E.
+- Dependency auditing, secret scanning, mandatory review, and protected release
+  promotion remain repository-governance work rather than current CI claims.
 
 ## Initial success metrics
 

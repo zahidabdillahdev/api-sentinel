@@ -8,6 +8,11 @@ import { AppError, notFound } from "../lib/errors.js";
 import { encrypt } from "../lib/encryption.js";
 import { recordAuditEvent } from "../lib/audit.js";
 import { assertSafeTarget } from "../lib/safe-url.js";
+import {
+  ActiveRunQuotaExceededError,
+  createQueuedRunWithinQuota,
+} from "../lib/run-quota.js";
+import { config } from "../config.js";
 
 const projectParams = z.object({ projectId: z.string().cuid() });
 const collectionParams = z.object({ collectionId: z.string().cuid() });
@@ -284,9 +289,22 @@ export const collectionRoutes: FastifyPluginAsync = async (app) => {
           422,
           "EMPTY_COLLECTION",
         );
-      const run = await app.prisma.executionRun.create({
-        data: { collectionId, status: "QUEUED" },
-      });
+      let run;
+      try {
+        run = await createQueuedRunWithinQuota(app.prisma, {
+          collectionId,
+          maxActiveRuns: config.MAX_ACTIVE_RUNS_PER_ORGANIZATION,
+        });
+      } catch (error) {
+        if (error instanceof ActiveRunQuotaExceededError)
+          throw new AppError(
+            "The organization has reached its active run quota",
+            429,
+            "ACTIVE_RUN_QUOTA_EXCEEDED",
+            { limit: error.limit, scope: "organization" },
+          );
+        throw error;
+      }
       try {
         await app.runQueue.add(
           "execute",
