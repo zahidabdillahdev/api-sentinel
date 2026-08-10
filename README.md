@@ -472,12 +472,99 @@ the origin.
 | `MAX_ACTIVE_RUNS_PER_ORGANIZATION` | No | Maximum combined `QUEUED` and `RUNNING` executions per organization; defaults to `20`. |
 | `RUN_STALE_AFTER_SECONDS` | No | Maximum time without run progress before recovery marks it failed; defaults to `300`. |
 | `MAX_TARGET_RESPONSE_BYTES` | No | Maximum target body buffered for a JSON assertion; defaults to `1048576` (1 MiB). |
+| `BACKUP_DIR` | Backup tooling | Dedicated host directory for encrypted database archives; defaults to `backups/postgres`. |
+| `BACKUP_RETENTION_DAYS` | Backup tooling | Local archive retention from `1` to `3650` days; defaults to `30`. |
+| `BACKUP_ENCRYPTION_KEY` | Backup tooling | Unique 32-byte backup passphrase encoded as 64 hexadecimal characters. Store it separately from the server. |
 | `ENCRYPTION_KEY` | Production | Unique 32-byte key encoded as 64 hexadecimal characters. |
 | `NEXT_PUBLIC_API_URL` | Web build | Browser-visible API URL embedded during the Next.js build. |
 | `ALLOW_INSECURE_HTTP_TARGETS` | No | Permit trusted public HTTP targets; defaults to `false`. |
 | `LOG_LEVEL` | No | Pino log level; defaults to `info`. |
 
 ## Operations and troubleshooting
+
+### Encrypted database backup
+
+PostgreSQL is the system of record. Redis contains rebuildable queues, rate
+limits, and scheduler state and is intentionally excluded from database
+backups.
+
+Generate a dedicated backup key and place it in the gitignored `.env`:
+
+```bash
+openssl rand -hex 32
+```
+
+Do not reuse `ENCRYPTION_KEY`. Keep both keys in an external password manager or
+secret store: the backup key decrypts the archive, while `ENCRYPTION_KEY` is
+still required to decrypt application secrets after restoration.
+
+The host needs Docker, OpenSSL, and GNU `sha256sum`. Create and validate an
+encrypted custom-format archive without requiring Node.js:
+
+```bash
+bash scripts/backup-database.sh
+```
+
+`npm run backup:database` is an equivalent convenience command when npm is
+installed.
+
+The command writes a mode-`0600` `.dump.enc` archive plus checksum and metadata
+sidecars to `BACKUP_DIR`. It validates the encrypted stream with `pg_restore`,
+then removes only matching archives older than `BACKUP_RETENTION_DAYS`.
+Incomplete archives are removed atomically and never published under a final
+filename.
+
+Local retention is not disaster recovery. Replicate the encrypted archive and
+both sidecars to versioned off-host or object storage, monitor transfer failure,
+and prevent the host running API Sentinel from deleting the remote copy.
+
+For a generic Linux installation, the examples in `ops/systemd/` run the backup
+daily with persistent catch-up and randomized start delay. Replace
+`/opt/api-sentinel` in the service template with the actual checkout path, then
+install and enable it:
+
+```bash
+sudo install -m 0644 ops/systemd/api-sentinel-backup.service.example \
+  /etc/systemd/system/api-sentinel-backup.service
+sudo install -m 0644 ops/systemd/api-sentinel-backup.timer.example \
+  /etc/systemd/system/api-sentinel-backup.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now api-sentinel-backup.timer
+systemctl list-timers api-sentinel-backup.timer
+```
+
+### Restore and rehearsal
+
+Test an archive without touching the live database:
+
+```bash
+bash scripts/rehearse-database-restore.sh \
+  backups/postgres/api-sentinel-TIMESTAMP-PID.dump.enc
+```
+
+The rehearsal verifies the checksum, decrypts into a temporary network-isolated
+PostgreSQL 16 container, checks table and Prisma migration integrity, and always
+removes the container. Run this regularly and after changes to PostgreSQL,
+Prisma, encryption, or backup storage.
+
+A live restore is intentionally explicit and destructive:
+
+```bash
+bash scripts/restore-database.sh --confirm api_sentinel \
+  backups/postgres/api-sentinel-TIMESTAMP-PID.dump.enc
+```
+
+The restore verifies the archive before making changes, stops active API and
+worker containers, creates a quiesced safety backup, recreates the database,
+checks migration state, restarts only services that were previously running,
+and verifies API health. If database replacement starts and then fails, API and
+worker remain stopped; use the printed safety-backup path for recovery.
+
+After every real restore, verify sign-in, specification access, environment
+decryption, collection history, schedules, and webhook configuration. Record
+the archive timestamp, operator, result, observed recovery time, and any data
+gap. A daily timer gives at best a roughly 24-hour recovery point; tighter
+objectives require more frequent backups or managed point-in-time recovery.
 
 Inspect service state:
 
@@ -509,6 +596,8 @@ Common failure modes:
 | Target rejected as unsafe | Use a public hostname and verify it does not resolve to loopback, private, link-local, or metadata addresses. |
 | Secrets cannot be decrypted | Confirm the original `ENCRYPTION_KEY` is present and unchanged. |
 | Migration fails | Stop the rollout, inspect `prisma migrate status`, and do not manually edit migration history. |
+| Backup cannot decrypt | Confirm the original `BACKUP_ENCRYPTION_KEY`; never rotate it without retaining access to old archives. |
+| Restore remains stopped | Inspect the reported failure and preserve the automatically created safety backup before retrying. |
 
 ## Security model
 
@@ -525,9 +614,9 @@ Common failure modes:
 - Production uses same-origin HTTPS with private backend ports.
 - Audit events avoid full webhook URLs, encrypted values, and plaintext secrets.
 
-Security-sensitive deployments should additionally provide external database
-backups, secret-manager integration, infrastructure monitoring, and periodic
-restore rehearsals.
+Security-sensitive deployments should additionally replicate encrypted backups
+off-host, protect both encryption keys in a secret manager, add infrastructure
+monitoring, and rehearse documented recovery objectives periodically.
 
 ## Repository layout
 
@@ -537,7 +626,8 @@ apps/
   cli/          CI-oriented collection runner
   web/          Next.js dashboard
 e2e/            Playwright browser workflows
-scripts/        Guarded deployment and isolated E2E orchestration
+scripts/        Guarded deployment, backup/restore, and isolated E2E orchestration
+ops/systemd/    Optional host-level encrypted-backup timer templates
 docker-compose*.yml
                 Local, production, development, and E2E service definitions
 ```

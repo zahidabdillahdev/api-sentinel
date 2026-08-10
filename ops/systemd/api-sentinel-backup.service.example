@@ -1,0 +1,12 @@
+[Unit]
+Description=API Sentinel encrypted PostgreSQL backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/api-sentinel
+EnvironmentFile=/opt/api-sentinel/.env
+ExecStart=/usr/bin/env bash scripts/backup-database.sh
+UMask=0077
+NoNewPrivileges=true

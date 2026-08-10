@@ -167,8 +167,13 @@ signed/idempotent worker job envelopes remain planned hardening work.
   diagnosis.
 - The health endpoint verifies the API process and PostgreSQL connection.
 
-Queue/database dashboards, alerting, automated backups, point-in-time recovery,
-and restore rehearsals remain the next operational milestone.
+Encrypted PostgreSQL custom-format backups, bounded local retention, checksum
+verification, quiesced live restore, and network-isolated restore rehearsal are
+included. The browser E2E gate exercises backup, destructive restore, preserved
+data, and an additional isolated rehearsal against the real migrated schema.
+Operators must schedule the supplied systemd timer and replicate archives
+off-host; repository automation does not claim managed point-in-time recovery.
+Queue/database dashboards and alerting remain the next operational milestone.
 
 ## Deployment
 
@@ -187,5 +192,7 @@ browser bundle to reject an accidentally embedded localhost API endpoint.
 Browser E2E uses a separate Compose project, network, PostgreSQL volume, and
 host ports. Chromium verifies the first-value workflow through the UI while the
 real worker processes the queued run; teardown removes only the isolated test
-resources. CI therefore exercises the same service boundaries as a self-hosted
-installation without depending on an external environment.
+resources. The same isolated stack is backed up, deliberately mutated, restored,
+and restored again into a disposable PostgreSQL container. CI therefore
+exercises the same service and recovery boundaries as a self-hosted installation
+without depending on an external environment.
