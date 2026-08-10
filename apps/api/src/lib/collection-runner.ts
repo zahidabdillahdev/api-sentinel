@@ -2,6 +2,11 @@ import type { PrismaClient } from "@prisma/client";
 import { decrypt } from "./encryption.js";
 import { assertSafeTarget } from "./safe-url.js";
 import { redactSecrets, resolveVariables } from "./variables.js";
+import { config } from "../config.js";
+import {
+  discardResponseBody,
+  readResponseBody,
+} from "./response-body.js";
 
 export async function executeCollectionRun(
   prisma: PrismaClient,
@@ -19,22 +24,27 @@ export async function executeCollectionRun(
     },
   });
   if (!run) throw new Error(`Execution run ${runId} was not found`);
+  if (run.status === "PASSED" || run.status === "FAILED") return false;
 
-  await prisma.executionRun.update({
-    where: { id: runId },
+  const startedAt = new Date();
+  const claimed = await prisma.executionRun.updateMany({
+    where: { id: runId, status: { in: ["QUEUED", "RUNNING"] } },
     data: {
       status: "RUNNING",
-      startedAt: new Date(),
+      startedAt: run.startedAt ?? startedAt,
+      heartbeatAt: startedAt,
       finishedAt: null,
       error: null,
     },
   });
+  if (claimed.count !== 1) return false;
 
   try {
     const results = await Promise.all(
       run.collection.requests.map(async (testRequest) => {
         const started = Date.now();
         let secretValues: string[] = [];
+        let responseStatus: number | undefined;
         try {
           const secrets = Object.fromEntries(
             (run.collection.environment?.secrets ?? []).map((secret) => [
@@ -69,6 +79,7 @@ export async function executeCollectionRun(
             redirect: "error",
             signal: AbortSignal.timeout(10_000),
           });
+          responseStatus = response.status;
           const durationMs = Date.now() - started;
           const failures: string[] = [];
           if (
@@ -95,22 +106,31 @@ export async function executeCollectionRun(
               `Expected response under ${testRequest.maxDurationMs}ms, received ${durationMs}ms`,
             );
           if (testRequest.jsonPath) {
-            const payload = (await response.json().catch(() => undefined)) as
-              | Record<string, unknown>
-              | undefined;
-            const actual = testRequest.jsonPath
-              .slice(2)
-              .split(".")
-              .reduce<unknown>(
-                (value, key) =>
-                  value && typeof value === "object"
-                    ? (value as Record<string, unknown>)[key]
-                    : undefined,
-                payload,
-              );
-            if (JSON.stringify(actual) !== testRequest.expectedJsonValue)
-              failures.push(`JSON path ${testRequest.jsonPath} did not match`);
-          }
+            const responseBody = await readResponseBody(
+              response,
+              config.MAX_TARGET_RESPONSE_BYTES,
+            );
+            let payload: Record<string, unknown> | undefined;
+            try {
+              payload = JSON.parse(responseBody) as Record<string, unknown>;
+            } catch {
+              failures.push("Response body is not valid JSON");
+            }
+            if (payload) {
+              const actual = testRequest.jsonPath
+                .slice(2)
+                .split(".")
+                .reduce<unknown>(
+                  (value, key) =>
+                    value && typeof value === "object"
+                      ? (value as Record<string, unknown>)[key]
+                      : undefined,
+                  payload,
+                );
+              if (JSON.stringify(actual) !== testRequest.expectedJsonValue)
+                failures.push(`JSON path ${testRequest.jsonPath} did not match`);
+            }
+          } else await discardResponseBody(response);
           return {
             testRequestId: testRequest.id,
             statusCode: response.status,
@@ -121,6 +141,7 @@ export async function executeCollectionRun(
         } catch (error) {
           return {
             testRequestId: testRequest.id,
+            statusCode: responseStatus,
             durationMs: Date.now() - started,
             passed: false,
             error: redactSecrets(
@@ -134,22 +155,25 @@ export async function executeCollectionRun(
     const status = results.every((result) => result.passed)
       ? "PASSED"
       : "FAILED";
-    await prisma.$transaction([
-      prisma.requestResult.deleteMany({ where: { executionRunId: runId } }),
-      prisma.executionRun.update({
-        where: { id: runId },
-        data: { status, finishedAt: new Date(), results: { create: results } },
-      }),
-    ]);
-  } catch (error) {
-    await prisma.executionRun.update({
-      where: { id: runId },
-      data: {
-        status: "FAILED",
-        finishedAt: new Date(),
-        error: error instanceof Error ? error.message : "Execution failed",
-      },
+    const completed = await prisma.$transaction(async (transaction) => {
+      const terminal = await transaction.executionRun.updateMany({
+        where: { id: runId, status: "RUNNING" },
+        data: { status, finishedAt: new Date(), heartbeatAt: new Date() },
+      });
+      if (terminal.count !== 1) return false;
+      await transaction.requestResult.deleteMany({
+        where: { executionRunId: runId },
+      });
+      await transaction.requestResult.createMany({
+        data: results.map((result) => ({
+          ...result,
+          executionRunId: runId,
+        })),
+      });
+      return true;
     });
+    return completed;
+  } catch (error) {
     throw error;
   }
 }

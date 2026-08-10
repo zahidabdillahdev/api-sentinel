@@ -21,6 +21,18 @@ const configSchema = z
       .min(1)
       .max(10_000)
       .default(20),
+    RUN_STALE_AFTER_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(60)
+      .max(86_400)
+      .default(300),
+    MAX_TARGET_RESPONSE_BYTES: z.coerce
+      .number()
+      .int()
+      .min(1_024)
+      .max(10 * 1_024 * 1_024)
+      .default(1_048_576),
     ENCRYPTION_KEY: z.preprocess(
       (value) => (value === "" ? undefined : value),
       z.string().regex(/^[a-f0-9]{64}$/i).optional(),

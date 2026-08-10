@@ -11,7 +11,7 @@ installation has no dependency on a central hosted service.
 | Capability | Current implementation | Target production design |
 | --- | --- | --- |
 | Execution | BullMQ worker, retries, and atomic organization active-run quota | Cancellation, usage budgets, and workload classes |
-| State | Durable `QUEUED`/`RUNNING`/terminal state machine | Heartbeats and stale-run recovery |
+| State | Durable state machine with worker heartbeats and stale-run recovery | Cancellation and explicit timeout states |
 | Secrets | AES-256-GCM environment secrets using a deployment key | Managed-key envelope encryption and rotation |
 | Storage | PostgreSQL documents and results | PostgreSQL plus object storage for bounded artifacts |
 | Notifications | Encrypted generic failure webhooks with retry history | Email channels, routing policies, and dead-letter replay |
@@ -25,6 +25,12 @@ runs acquire a PostgreSQL transaction advisory lock, count `QUEUED` and
 `RUNNING` executions, and admit work only below the configured limit. This
 keeps the quota consistent across API replicas and workers without relying on
 process-local counters.
+
+Workers write a heartbeat while an execution is active. A minute-level
+maintenance job conditionally transitions expired `QUEUED` or `RUNNING` rows
+to `FAILED`; terminal-state guards prevent a delayed queue job or concurrent
+worker from reviving the recovered run. Infrastructure exceptions remain
+retryable until BullMQ reaches the final attempt.
 
 Project overview metrics are computed from PostgreSQL on demand with project-scoped relation filters. Run history uses stable execution IDs as cursors, validates that every cursor belongs to the authorized collection, and keeps payload size bounded with a maximum page size of 50.
 
@@ -109,8 +115,10 @@ Important storage rules:
 - Specification versions are immutable and store the imported JSON document
   plus extracted title and API version metadata.
 - Secrets are encrypted before persistence and never returned in plaintext after creation.
-- Target response bodies and headers are not persisted; results retain status,
-  duration, pass/fail state, and redacted error text.
+- Target response bodies and headers are not persisted. JSON assertion bodies
+  are read through a configurable byte ceiling; other bodies are cancelled
+  without buffering. Results retain status, duration, pass/fail state, and
+  redacted error text.
 - Execution data belongs to a project through its collection and read routes
   enforce organization-scoped authorization.
 - Audit metadata excludes encrypted values and write-only secret material.
@@ -139,12 +147,14 @@ analysis remain planned.
 - Block requests to loopback, link-local, private-network, and cloud metadata ranges by default to limit SSRF.
 - Reject redirects, preflight DNS results, require HTTPS by default, and enforce
   a ten-second execution timeout.
+- Bound target response bodies before JSON parsing and cancel bodies that no
+  assertion consumes.
 - Encrypt write-only secrets with a deployment key and redact resolved values
   from persisted execution errors.
 - Rate-limit public endpoints, hash tokens, maintain audit trails, and validate all payloads.
 - Serialize organization quota admission in PostgreSQL before adding work to the queue.
 
-Managed-key rotation, DNS pinning, bounded response reads, cancellation, and
+Managed-key rotation, DNS pinning, user-initiated cancellation, and
 signed/idempotent worker job envelopes remain planned hardening work.
 
 ## Current reliability and operations
@@ -157,9 +167,8 @@ signed/idempotent worker job envelopes remain planned hardening work.
   diagnosis.
 - The health endpoint verifies the API process and PostgreSQL connection.
 
-Worker heartbeats, stale-run recovery, queue/database dashboards, alerting,
-automated backups, point-in-time recovery, and restore rehearsals remain the
-next operational milestone.
+Queue/database dashboards, alerting, automated backups, point-in-time recovery,
+and restore rehearsals remain the next operational milestone.
 
 ## Deployment
 

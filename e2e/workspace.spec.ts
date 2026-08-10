@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
+import { recoverStaleRuns } from "../apps/api/src/lib/run-recovery.js";
 
 const prisma = new PrismaClient();
 
@@ -113,7 +114,7 @@ test("developer can complete the first-value workspace flow", async ({ page }) =
   ).toBeVisible();
 });
 
-test("viewer access and organization run quota are enforced", async ({
+test("viewer access, run quota, and stale recovery are enforced", async ({
   request,
 }) => {
   const apiUrl = process.env.PLAYWRIGHT_API_URL ?? "http://127.0.0.1:3101/v1";
@@ -230,4 +231,57 @@ test("viewer access and organization run quota are enforced", async ({
     code: "ACTIVE_RUN_QUOTA_EXCEEDED",
     details: { limit: 1, scope: "organization" },
   });
+
+  const recoveryTime = new Date();
+  const staleHeartbeat = new Date(recoveryTime.getTime() - 301_000);
+  await prisma.executionRun.update({
+    where: { id: activeRun.id },
+    data: { createdAt: staleHeartbeat },
+  });
+  const staleRunningRun = await prisma.executionRun.create({
+    data: {
+      collectionId: collection.id,
+      status: "RUNNING",
+      startedAt: staleHeartbeat,
+      heartbeatAt: staleHeartbeat,
+    },
+  });
+  const healthyRunningRun = await prisma.executionRun.create({
+    data: {
+      collectionId: collection.id,
+      status: "RUNNING",
+      startedAt: staleHeartbeat,
+      heartbeatAt: recoveryTime,
+    },
+  });
+  const recovery = await recoverStaleRuns(prisma, 300, recoveryTime);
+  expect(recovery).toMatchObject({
+    recoveredQueuedRuns: 1,
+    recoveredRunningRuns: 1,
+  });
+  expect(recovery.recoveredRunIds).toEqual(
+    expect.arrayContaining([activeRun.id, staleRunningRun.id]),
+  );
+  const recoveredRun = await prisma.executionRun.findUniqueOrThrow({
+    where: { id: activeRun.id },
+  });
+  expect(recoveredRun).toMatchObject({
+    status: "FAILED",
+    error: "Execution did not start before the recovery deadline",
+    finishedAt: recoveryTime,
+  });
+  await expect(
+    prisma.executionRun.findUniqueOrThrow({
+      where: { id: staleRunningRun.id },
+    }),
+  ).resolves.toMatchObject({
+    status: "FAILED",
+    error: "Worker heartbeat expired before execution completed",
+  });
+  await expect(
+    prisma.executionRun.findUniqueOrThrow({
+      where: { id: healthyRunningRun.id },
+    }),
+  ).resolves.toMatchObject({ status: "RUNNING", heartbeatAt: recoveryTime });
+  await prisma.executionRun.delete({ where: { id: healthyRunningRun.id } });
 });

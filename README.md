@@ -19,7 +19,7 @@ questions:
 | Team workspace | Organizations, projects, invitations, sessions, and project-scoped roles. |
 | API contracts | OpenAPI 3.x JSON import, immutable versions, API reference, and focused breaking-change reports. |
 | API checks | Collections, environments, request payloads, encrypted variables, and status/header/JSON/latency assertions. |
-| Execution | Durable BullMQ jobs, retries, organization-scoped active-run quotas, run history, and a separately scalable worker. |
+| Execution | Durable BullMQ jobs, retries, heartbeats, stale-run recovery, organization-scoped quotas, and a separately scalable worker. |
 | Automation | Cron schedules, overlap protection, signed failure webhooks, retry history, and retention controls. |
 | Developer tooling | CI-friendly CLI, stable JSON output, deterministic exit codes, and a GitHub Actions example. |
 | Operations | Redis-backed rate limits, audit events, HTTPS ingress, guarded deployment, and browser E2E coverage. |
@@ -204,6 +204,11 @@ The check is serialized in PostgreSQL, so multiple API replicas and workers
 cannot bypass it with concurrent requests. Manual requests above the limit
 receive `429 ACTIVE_RUN_QUOTA_EXCEEDED`.
 
+Workers heartbeat active executions. A maintenance job runs every minute and
+fails queued or running records that have made no progress for the configured
+recovery window. Conditional updates prevent recovery from overwriting a run
+that completed or renewed its heartbeat concurrently.
+
 ## Environments and secrets
 
 An environment provides a reusable base URL and write-only values such as API
@@ -233,6 +238,8 @@ The worker treats target URLs as untrusted input.
 - HTTPS is required by default.
 - Redirects are disabled.
 - Requests have a ten-second timeout.
+- Response bodies used by JSON assertions are streamed through a configurable
+  size limit; unused bodies are cancelled without buffering.
 - Loopback, private, link-local, and cloud-metadata destinations are blocked.
 - DNS results are checked before a request is sent.
 - Credentials embedded in target URLs are rejected.
@@ -388,6 +395,7 @@ The Chromium test covers:
 - Assertion failure details in the workspace.
 - Viewer read access with denied mutation attempts.
 - Active-run quota rejection against PostgreSQL.
+- Stale queued-run recovery against PostgreSQL.
 
 The wrapper uses application ports `3100` and `3101` plus loopback-only
 PostgreSQL port `55432`, prints service logs on failure, and always removes only
@@ -462,6 +470,8 @@ the origin.
 | `TRUST_PROXY` | Production proxy only | Trust proxy-derived client addresses; production Compose enables it behind Caddy. |
 | `RATE_LIMIT_MAX` | No | Global requests per source IP per minute; defaults to `300`. |
 | `MAX_ACTIVE_RUNS_PER_ORGANIZATION` | No | Maximum combined `QUEUED` and `RUNNING` executions per organization; defaults to `20`. |
+| `RUN_STALE_AFTER_SECONDS` | No | Maximum time without run progress before recovery marks it failed; defaults to `300`. |
+| `MAX_TARGET_RESPONSE_BYTES` | No | Maximum target body buffered for a JSON assertion; defaults to `1048576` (1 MiB). |
 | `ENCRYPTION_KEY` | Production | Unique 32-byte key encoded as 64 hexadecimal characters. |
 | `NEXT_PUBLIC_API_URL` | Web build | Browser-visible API URL embedded during the Next.js build. |
 | `ALLOW_INSECURE_HTTP_TARGETS` | No | Permit trusted public HTTP targets; defaults to `false`. |
@@ -495,7 +505,7 @@ Common failure modes:
 | --- | --- |
 | Browser reports `Failed to fetch` | Confirm HTTPS health, CORS origin, and that the web image was built with the production overlay. |
 | Caddy cannot obtain a certificate | Verify DNS, ports 80/443, server clock, and that no other process owns the ports. |
-| A run remains queued | Inspect Redis and worker health, then check worker logs. |
+| A run remains queued | Inspect Redis and worker health. Orphaned runs are failed automatically after the stale-run window. |
 | Target rejected as unsafe | Use a public hostname and verify it does not resolve to loopback, private, link-local, or metadata addresses. |
 | Secrets cannot be decrypted | Confirm the original `ENCRYPTION_KEY` is present and unchanged. |
 | Migration fails | Stop the rollout, inspect `prisma migrate status`, and do not manually edit migration history. |

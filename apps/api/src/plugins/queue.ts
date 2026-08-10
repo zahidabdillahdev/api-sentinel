@@ -7,7 +7,7 @@ export const COLLECTION_RUN_QUEUE = "collection-runs";
 export type CollectionRunJob = {
   runId?: string;
   scheduleId?: string;
-  maintenance?: "retention";
+  maintenance?: "retention" | "stale-runs";
 };
 
 declare module "fastify" {
@@ -28,6 +28,20 @@ export default fp(async (app) => {
     {
       name: "retention-cleanup",
       data: { maintenance: "retention" },
+      opts: {
+        attempts: 3,
+        backoff: { type: "exponential", delay: 5_000 },
+        removeOnComplete: 100,
+        removeOnFail: 100,
+      },
+    },
+  );
+  await queue.upsertJobScheduler(
+    "stale-run-recovery",
+    { every: 60_000 },
+    {
+      name: "stale-run-recovery",
+      data: { maintenance: "stale-runs" },
       opts: {
         attempts: 3,
         backoff: { type: "exponential", delay: 5_000 },

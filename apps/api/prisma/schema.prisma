@@ -245,6 +245,7 @@ model ExecutionRun {
   status       RunStatus
   createdAt    DateTime        @default(now())
   startedAt    DateTime?
+  heartbeatAt  DateTime?
   finishedAt   DateTime?
   error        String?
   scheduleId   String?
@@ -252,6 +253,9 @@ model ExecutionRun {
   schedule     Schedule?       @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
   results      RequestResult[]
   webhookDeliveries WebhookDelivery[]
+
+  @@index([status, heartbeatAt])
+  @@index([status, createdAt])
 }
 
 model WebhookDelivery {

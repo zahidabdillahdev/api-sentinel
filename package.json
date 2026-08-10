@@ -14,7 +14,7 @@
     "test": "npm run test --workspaces --if-present",
     "test:e2e": "playwright test",
     "test:e2e:stack": "bash scripts/test-e2e.sh",
-    "typecheck": "tsc --noEmit -p tsconfig.e2e.json && npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run db:generate -w @api-sentinel/api && tsc --noEmit -p tsconfig.e2e.json && npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {
     "@next/eslint-plugin-next": "^16.3.0",
