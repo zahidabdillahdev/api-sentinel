@@ -18,9 +18,10 @@ must remain fully functional without relying on a central hosted service.
 
 ### Next engineering sequence
 
-1. Complete backup/restore runbooks, worker/queue observability, broader audit
-   coverage, and accessibility checks. Active-run quotas, heartbeat-based stale
-   recovery, bounded response reads, and expanded browser E2E are delivered.
+1. Complete worker/queue observability, broader audit coverage, accessibility
+   checks, and load tests. Encrypted backups, guarded restore, isolated recovery
+   rehearsal, active-run quotas, heartbeat-based stale recovery, bounded
+   response reads, and expanded browser E2E are delivered.
 
 ## Product goal
 
@@ -108,7 +109,9 @@ run the system locally or behind the included HTTPS production ingress.
   **Delivered.** User cancellation remains planned.
 - Expand audit coverage beyond retention, schedule, and webhook configuration.
 - Instrument API, worker, and external HTTP calls with OpenTelemetry.
-- Add backups, restore rehearsal, dashboards, and runbooks.
+- Add encrypted backups, guarded restore, isolated rehearsal, and recovery
+  runbooks. **Delivered.** Off-host replication, managed point-in-time recovery,
+  dashboards, and alerting remain operator/platform responsibilities.
 - Complete accessibility, load, and broader integration tests. First-value,
   assertion-failure, viewer-RBAC, quota, and stale-recovery E2E paths are delivered.
 - Serve production deployments through a custom domain with automatic HTTPS and private backend ports. **Delivered.**
@@ -138,7 +141,9 @@ docker-compose*.yml    Local, development, production, and E2E stacks
 - Integration tests against PostgreSQL and Redis.
 - Playwright covers sign-up/sign-in, revoked logout sessions,
   project/environment setup, OpenAPI import, passing and failing execution,
-  viewer authorization, and active-run quota rejection.
+  viewer authorization, and active-run quota rejection. The isolated workflow
+  then validates encrypted backup, confirmation/checksum guards, destructive
+  restore, data preservation, and disposable-container rehearsal.
 - Every pull request and push to `main`: linting, type checking, unit tests,
   production builds, shell validation, and isolated Chromium E2E.
 - Dependency auditing, secret scanning, mandatory review, and protected release

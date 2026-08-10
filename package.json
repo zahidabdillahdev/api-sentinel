@@ -7,10 +7,12 @@
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "check:scripts": "bash -n scripts/deploy-production.sh scripts/test-e2e.sh",
+    "backup:database": "bash scripts/backup-database.sh",
+    "check:scripts": "bash -n scripts/*.sh scripts/lib/*.sh",
     "deploy:production": "bash scripts/deploy-production.sh",
     "dev": "npm run dev -w @api-sentinel/api",
     "lint": "eslint e2e playwright.config.ts && npm run lint --workspaces --if-present",
+    "rehearse:restore": "bash scripts/rehearse-database-restore.sh",
     "test": "npm run test --workspaces --if-present",
     "test:e2e": "playwright test",
     "test:e2e:stack": "bash scripts/test-e2e.sh",

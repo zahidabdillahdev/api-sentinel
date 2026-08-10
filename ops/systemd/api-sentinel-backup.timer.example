@@ -1,0 +1,11 @@
+[Unit]
+Description=Run API Sentinel database backup daily
+
+[Timer]
+OnCalendar=*-*-* 02:00:00 UTC
+Persistent=true
+RandomizedDelaySec=15m
+Unit=api-sentinel-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -36,6 +36,9 @@ Run collection → inspect assertion result and history
 - Collections support cron schedules with IANA timezones and explicit active/paused states.
 - Runs without queue progress or a live worker heartbeat are failed
   automatically after the deployment recovery window.
+- Backup and destructive restore remain operator-only workflows outside the web
+  UI. Explicit confirmation, safety snapshots, and isolated rehearsals prevent
+  routine workspace actions from exposing disaster-recovery controls.
 - Collection failure webhooks show only the endpoint origin, keep URL/signing secret write-only, and expose the ten latest delivery attempts for diagnosis.
 - The project overview shows 24-hour pass rate, volume, failures, average latency, schedule coverage, and recent runs; collection history progressively loads older pages.
 - The governance panel gives administrators explicit 7–365 day retention controls and gives members a readable actor/action timeline without exposing secret values.
